@@ -1,0 +1,16 @@
+# Python
+spaceintel-backend/venv/
+spaceintel-backend/__pycache__/
+spaceintel-backend/.env
+spaceintel-backend/uploaded_pdfs/
+spaceintel-backend/documents_manifest.json
+spaceintel-backend/*.db
+
+# Next.js
+spaceintel-frontend/.next/
+spaceintel-frontend/node_modules/
+spaceintel-frontend/.env.local
+
+# General
+.DS_Store
+*.pyc

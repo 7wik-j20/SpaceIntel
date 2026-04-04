@@ -1,0 +1,27 @@
+# OS/editor artifacts
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.log
+
+# Local secrets/env
+.env
+.env.*
+
+# Backend local/runtime files
+spaceintel-backend/venv/
+spaceintel-backend/uploaded_pdfs/
+spaceintel-backend/.env
+
+# Frontend dependencies/build cache
+spaceintel-frontend/node_modules/
+spaceintel-frontend/.next/
+
+# Upload/runtime data at workspace root
+uploaded_pdfs/
