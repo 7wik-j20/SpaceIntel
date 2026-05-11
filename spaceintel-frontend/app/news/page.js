@@ -1,6 +1,7 @@
 "use client";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Sidebar from "../components/Sidebar";
+import { useTranslation } from "react-i18next";
 
 function StarField() {
   const canvasRef = useRef(null);
@@ -51,9 +52,9 @@ function StarField() {
   return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none" style={{ zIndex: 0 }} />;
 }
 
-function formatDate(dateText) {
+function formatDate(dateText, unknownLabel, locale = undefined) {
   try {
-    return new Date(dateText).toLocaleString(undefined, {
+    return new Date(dateText).toLocaleString(locale, {
       year: "numeric",
       month: "short",
       day: "2-digit",
@@ -61,12 +62,95 @@ function formatDate(dateText) {
       minute: "2-digit",
     });
   } catch {
-    return "Unknown date";
+    return unknownLabel;
   }
+}
+
+const MAX_FEED_ITEMS = 18;
+const LATEST_WINDOW_DAYS = 14;
+
+function normalizeLanguageCode(rawLanguage) {
+  const normalized = (rawLanguage || "en").toLowerCase();
+  if (normalized.startsWith("hi")) return "hi";
+  if (normalized.startsWith("te")) return "te";
+  if (normalized.startsWith("ta")) return "ta";
+  if (normalized.startsWith("kn")) return "kn";
+  if (normalized.startsWith("ml")) return "ml";
+  if (normalized.startsWith("bn")) return "bn";
+  return "en";
+}
+
+function normalizeArticles(items) {
+  const seen = new Set();
+  const deduped = [];
+  const now = Date.now();
+  const cutoff = now - LATEST_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+
+  (items || []).forEach((item) => {
+    if (!item || seen.has(item.id)) return;
+    const publishedAt = new Date(item?.published_at || 0).getTime();
+    if (!Number.isFinite(publishedAt) || publishedAt < cutoff) return;
+    seen.add(item.id);
+    deduped.push(item);
+  });
+
+  return deduped.sort((a, b) => {
+    const aTime = new Date(a?.published_at || 0).getTime();
+    const bTime = new Date(b?.published_at || 0).getTime();
+    return bTime - aTime;
+  }).slice(0, MAX_FEED_ITEMS);
+}
+
+function NewsThumbnail({ article, fallbackTitle, imagePlaceholderLabel }) {
+  const [failed, setFailed] = useState(false);
+  const imageUrl = article?.image_url || article?.imageUrl || article?.featured_image || "";
+  const showImage = imageUrl && !failed;
+
+  return (
+    <div
+      className="mb-4 rounded-xl overflow-hidden"
+      style={{
+        height: "180px",
+        background: "linear-gradient(135deg, rgba(0,212,255,0.08), rgba(123,95,255,0.08))",
+        border: "1px solid rgba(255,255,255,0.08)",
+      }}
+    >
+      {showImage ? (
+        <img
+          src={imageUrl}
+          alt={article?.title || fallbackTitle}
+          className="w-full h-full"
+          style={{ objectFit: "cover" }}
+          loading="lazy"
+          referrerPolicy="no-referrer"
+          onError={() => setFailed(true)}
+        />
+      ) : (
+        <div
+          className="w-full h-full flex items-center justify-center"
+          style={{
+            color: "rgba(255,255,255,0.45)",
+            fontFamily: "JetBrains Mono, monospace",
+            fontSize: "11px",
+            letterSpacing: "1px",
+          }}
+        >
+          {imagePlaceholderLabel}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function articleMatchesWatchlist(article, keywords) {
+  if (!Array.isArray(keywords) || keywords.length === 0) return false;
+  const hay = `${article?.title || ""} ${article?.summary || ""} ${article?.news_site || ""} ${article?.url || ""}`.toLowerCase();
+  return keywords.some((keyword) => hay.includes((keyword || "").toLowerCase()));
 }
 
 export default function NewsPage() {
   const [articles, setArticles] = useState([]);
+  const [translatedArticlesById, setTranslatedArticlesById] = useState({});
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [lastUpdatedAt, setLastUpdatedAt] = useState(null);
@@ -77,9 +161,22 @@ export default function NewsPage() {
   const [watchlist, setWatchlist] = useState([]);
   const [watchlistInput, setWatchlistInput] = useState("");
   const currentIdsRef = useRef(new Set());
+  const { t, i18n } = useTranslation();
+  const activeLanguage = useMemo(
+    () => normalizeLanguageCode(i18n.resolvedLanguage || i18n.language),
+    [i18n.language, i18n.resolvedLanguage]
+  );
 
-  const endpoint = useMemo(
-    () => "https://api.spaceflightnewsapi.net/v4/articles/?limit=18&ordering=-published_at",
+  const endpoints = useMemo(
+    () => ({
+      general: "https://api.spaceflightnewsapi.net/v4/articles/?limit=24&ordering=-published_at",
+      isroBoost: [
+        "https://api.spaceflightnewsapi.net/v4/articles/?limit=10&search=isro",
+        "https://api.spaceflightnewsapi.net/v4/articles/?limit=8&search=chandrayaan",
+        "https://api.spaceflightnewsapi.net/v4/articles/?limit=8&search=gaganyaan",
+        "https://api.spaceflightnewsapi.net/v4/articles/?limit=8&search=aditya",
+      ],
+    }),
     []
   );
   const POLL_INTERVAL_MS = 45000;
@@ -98,20 +195,88 @@ export default function NewsPage() {
     localStorage.setItem("spaceintel_news_watchlist", JSON.stringify(watchlist));
   }, [watchlist]);
 
-  const requestNews = useCallback(async ({ bustCache = false } = {}) => {
-    const url = bustCache ? `${endpoint}&_=${Date.now()}` : endpoint;
+  const fetchEndpointArticles = useCallback(async (baseUrl, { bustCache = false } = {}) => {
+    const url = bustCache ? `${baseUrl}&_=${Date.now()}` : baseUrl;
     const response = await fetch(url, {
       headers: { Accept: "application/json" },
       cache: "no-store",
     });
 
     if (!response.ok) {
-      throw new Error("Failed to fetch latest space news.");
+      throw new Error("endpoint_fetch_failed");
     }
 
     const data = await response.json();
     return Array.isArray(data?.results) ? data.results : [];
-  }, [endpoint]);
+  }, []);
+
+  const requestNews = useCallback(async ({ bustCache = false } = {}) => {
+    const requests = [
+      fetchEndpointArticles(endpoints.general, { bustCache }),
+      ...endpoints.isroBoost.map((url) => fetchEndpointArticles(url, { bustCache })),
+    ];
+
+    const settled = await Promise.allSettled(requests);
+    const merged = [];
+
+    settled.forEach((result) => {
+      if (result.status === "fulfilled" && Array.isArray(result.value)) {
+        merged.push(...result.value);
+      }
+    });
+
+    if (merged.length === 0) {
+      throw new Error(t("news_fetch_failed"));
+    }
+
+    return normalizeArticles(merged);
+  }, [endpoints, fetchEndpointArticles, t]);
+
+  const translateVisibleArticles = useCallback(async (visibleArticles, languageCode) => {
+    if (!Array.isArray(visibleArticles) || visibleArticles.length === 0 || languageCode === "en") {
+      return {};
+    }
+
+    try {
+      const payload = {
+        language: languageCode,
+        articles: visibleArticles.slice(0, 20).map((article) => ({
+          id: String(article.id),
+          title: article.title || "",
+          summary: article.summary || "",
+        })),
+      };
+
+      const response = await fetch("http://localhost:8000/news/translate", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (!response.ok) {
+        return {};
+      }
+
+      const data = await response.json();
+      if (!Array.isArray(data?.items)) {
+        return {};
+      }
+
+      return data.items.reduce((acc, item) => {
+        const itemId = String(item?.id || "").trim();
+        if (!itemId) return acc;
+        acc[itemId] = {
+          title: String(item?.title || "").trim(),
+          summary: String(item?.summary || "").trim(),
+        };
+        return acc;
+      }, {});
+    } catch {
+      return {};
+    }
+  }, []);
 
   const applyVisibleArticles = useCallback((items) => {
     setArticles(items);
@@ -134,14 +299,17 @@ export default function NewsPage() {
           return;
         }
 
-        const unseenCount = items.filter((item) => !currentIdsRef.current.has(item.id)).length;
+        const unseenItems = items.filter((item) => !currentIdsRef.current.has(item.id));
+        const unseenCount = watchlist.length > 0
+          ? unseenItems.filter((item) => articleMatchesWatchlist(item, watchlist)).length
+          : unseenItems.length;
         if (unseenCount > 0) {
           setPendingArticles(items);
           setNewStoriesCount(unseenCount);
         }
       } catch {
         if (!background) {
-          setError("Could not load the latest space news right now.");
+          setError(t("news_load_failed"));
           setArticles([]);
           setPendingArticles([]);
           setNewStoriesCount(0);
@@ -150,19 +318,42 @@ export default function NewsPage() {
         if (withLoader) setLoading(false);
       }
     },
-    [applyVisibleArticles, requestNews]
+    [applyVisibleArticles, requestNews, t, watchlist]
   );
 
   const handleManualRefresh = async () => {
     setRefreshing(true);
-    await fetchNews({ forceVisible: true, bustCache: true });
-    setRefreshVersion((v) => v + 1);
-    setRefreshing(false);
+    try {
+      const latestItems = await requestNews({ bustCache: true });
+      applyVisibleArticles(latestItems);
+      setRefreshVersion((v) => v + 1);
+    } catch {
+      setError(t("news_load_failed"));
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   useEffect(() => {
     fetchNews({ withLoader: true });
   }, [fetchNews]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const run = async () => {
+      const translated = await translateVisibleArticles(articles, activeLanguage);
+      if (!cancelled) {
+        setTranslatedArticlesById(translated);
+      }
+    };
+
+    run();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeLanguage, articles, translateVisibleArticles]);
 
   useEffect(() => {
     const id = setInterval(() => {
@@ -178,10 +369,27 @@ export default function NewsPage() {
   };
 
   const addWatchKeyword = () => {
-    const value = watchlistInput.trim();
-    if (!value) return;
-    const exists = watchlist.some((k) => k.toLowerCase() === value.toLowerCase());
-    if (!exists) setWatchlist((prev) => [...prev, value].slice(-10));
+    const values = watchlistInput
+      .split(",")
+      .map((value) => value.trim())
+      .filter(Boolean);
+    if (values.length === 0) return;
+
+    setWatchlist((prev) => {
+      const existing = new Set(prev.map((item) => item.toLowerCase()));
+      const next = [...prev];
+
+      values.forEach((value) => {
+        const normalized = value.toLowerCase();
+        if (!existing.has(normalized)) {
+          next.push(value);
+          existing.add(normalized);
+        }
+      });
+
+      return next.slice(-10);
+    });
+
     setWatchlistInput("");
   };
 
@@ -191,9 +399,16 @@ export default function NewsPage() {
 
   const matchingCount = watchlist.length === 0
     ? 0
-    : articles.filter((a) => {
-        const hay = `${a.title || ""} ${a.summary || ""}`.toLowerCase();
-        return watchlist.some((k) => hay.includes(k.toLowerCase()));
+    : articles.filter((article) => {
+        const translated = translatedArticlesById[String(article.id)];
+        const articleForMatch = translated
+          ? {
+              ...article,
+              title: translated.title || article.title,
+              summary: translated.summary || article.summary,
+            }
+          : article;
+        return articleMatchesWatchlist(articleForMatch, watchlist);
       }).length;
 
   return (
@@ -232,7 +447,7 @@ export default function NewsPage() {
                     color: "rgba(0,212,255,0.6)",
                   }}
                 >
-                  LIVE SPACEWIRE
+                  {t("news_live_label")}
                 </span>
               </div>
 
@@ -240,13 +455,13 @@ export default function NewsPage() {
                 className="text-2xl font-bold text-white tracking-widest"
                 style={{ fontFamily: "Orbitron, sans-serif" }}
               >
-                SPACE NEWS
+                {t("news_title")}
               </h2>
               <p
                 className="text-sm mt-1"
                 style={{ color: "rgba(255,255,255,0.3)", fontFamily: "DM Sans, sans-serif" }}
               >
-                Latest space related headlines from trusted aerospace publishers
+                {t("news_subtitle")}
               </p>
             </div>
 
@@ -269,7 +484,7 @@ export default function NewsPage() {
                 e.currentTarget.style.background = "rgba(0,212,255,0.06)";
               }}
             >
-              {refreshing ? "REFRESHING..." : "REFRESH FEED"}
+              {refreshing ? t("news_refreshing") : t("news_refresh_feed")}
             </button>
 
             <div
@@ -280,7 +495,7 @@ export default function NewsPage() {
                 letterSpacing: "0.5px",
               }}
             >
-              {lastUpdatedAt ? `UPDATED ${formatDate(lastUpdatedAt)}` : "UPDATED --"}
+              {lastUpdatedAt ? `${t("news_updated_prefix")} ${formatDate(lastUpdatedAt, t("news_unknown_date"), activeLanguage)}` : `${t("news_updated_prefix")} --`}
             </div>
           </div>
 
@@ -301,7 +516,7 @@ export default function NewsPage() {
                     addWatchKeyword();
                   }
                 }}
-                placeholder="Add watch keyword (e.g. ISRO, Artemis, Falcon)"
+                placeholder={t("news_watch_placeholder")}
                 style={{
                   flex: "1 1 320px",
                   padding: "8px 10px",
@@ -315,6 +530,7 @@ export default function NewsPage() {
               />
               <button
                 onClick={addWatchKeyword}
+                type="button"
                 className="px-3 py-2 rounded-lg text-xs transition-all"
                 style={{
                   background: "rgba(0,212,255,0.09)",
@@ -323,13 +539,13 @@ export default function NewsPage() {
                   fontFamily: "JetBrains Mono, monospace",
                 }}
               >
-                ADD WATCH
+                {t("news_add_watch")}
               </button>
               <div
                 className="text-xs"
                 style={{ color: "rgba(255,255,255,0.55)", fontFamily: "JetBrains Mono, monospace" }}
               >
-                ALERTS: {matchingCount}
+                {`${t("news_alerts")}: ${matchingCount}`}
               </div>
             </div>
 
@@ -346,7 +562,7 @@ export default function NewsPage() {
                       color: "rgba(255,255,255,0.85)",
                       fontFamily: "JetBrains Mono, monospace",
                     }}
-                    title="Remove keyword"
+                    title={t("news_remove_keyword")}
                   >
                     {keyword} ×
                   </button>
@@ -367,7 +583,7 @@ export default function NewsPage() {
                 className="text-sm"
                 style={{ color: "#9adfff", fontFamily: "DM Sans, sans-serif" }}
               >
-                {newStoriesCount} new stor{newStoriesCount === 1 ? "y is" : "ies are"} available.
+                {t("news_new_stories_available", { count: newStoriesCount })}
               </div>
               <button
                 onClick={applyPendingNews}
@@ -385,7 +601,7 @@ export default function NewsPage() {
                   e.currentTarget.style.background = "rgba(0,212,255,0.1)";
                 }}
               >
-                SHOW NEW STORIES
+                {t("news_show_new_stories")}
               </button>
             </div>
           )}
@@ -427,15 +643,20 @@ export default function NewsPage() {
                 fontFamily: "DM Sans, sans-serif",
               }}
             >
-              No space news found.
+              {t("news_empty")}
             </div>
           ) : (
             <div key={refreshVersion} className="grid grid-cols-1 lg:grid-cols-2 gap-4">
               {articles.map((article) => {
-                const isWatchMatch = watchlist.length > 0 && watchlist.some((k) => {
-                  const hay = `${article.title || ""} ${article.summary || ""}`.toLowerCase();
-                  return hay.includes(k.toLowerCase());
-                });
+                const translated = translatedArticlesById[String(article.id)];
+                const displayTitle = translated?.title || article.title;
+                const displaySummary = translated?.summary || article.summary;
+                const articleForMatch = {
+                  ...article,
+                  title: displayTitle,
+                  summary: displaySummary,
+                };
+                const isWatchMatch = articleMatchesWatchlist(articleForMatch, watchlist);
                 return (
                 <article
                   key={article.id}
@@ -457,6 +678,12 @@ export default function NewsPage() {
                       : "rgba(255,255,255,0.02)";
                   }}
                 >
+                  <NewsThumbnail
+                    article={article}
+                    fallbackTitle={t("news_title")}
+                    imagePlaceholderLabel={t("news_title").toUpperCase()}
+                  />
+
                   <div className="flex items-center justify-between gap-2 mb-3">
                     <span
                       className="px-2 py-1 rounded-lg text-xs"
@@ -467,7 +694,7 @@ export default function NewsPage() {
                         fontFamily: "JetBrains Mono, monospace",
                       }}
                     >
-                      {article.news_site || "Space Source"}
+                      {article.news_site || t("news_source_fallback")}
                     </span>
                     {isWatchMatch && (
                       <span
@@ -480,14 +707,14 @@ export default function NewsPage() {
                           letterSpacing: "0.4px",
                         }}
                       >
-                        WATCHLIST
+                        {t("news_watchlist")}
                       </span>
                     )}
                     <span
                       className="text-xs"
                       style={{ color: "rgba(255,255,255,0.35)", fontFamily: "JetBrains Mono, monospace" }}
                     >
-                      {formatDate(article.published_at)}
+                      {formatDate(article.published_at, t("news_unknown_date"), activeLanguage)}
                     </span>
                   </div>
 
@@ -495,14 +722,14 @@ export default function NewsPage() {
                     className="text-lg mb-2"
                     style={{ color: "#ffffff", fontFamily: "Syne, sans-serif", lineHeight: 1.35 }}
                   >
-                    {article.title}
+                    {displayTitle}
                   </h3>
 
                   <p
                     className="text-sm mb-4"
                     style={{ color: "rgba(255,255,255,0.62)", fontFamily: "DM Sans, sans-serif", lineHeight: 1.6 }}
                   >
-                    {article.summary || "No summary available."}
+                    {displaySummary || t("news_no_summary")}
                   </p>
 
                   <a
@@ -528,7 +755,7 @@ export default function NewsPage() {
                       e.currentTarget.style.color = "rgba(255,255,255,0.78)";
                     }}
                   >
-                    READ ARTICLE
+                    {t("news_read_article")}
                     <span>↗</span>
                   </a>
                 </article>

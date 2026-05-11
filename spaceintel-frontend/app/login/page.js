@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslation } from "react-i18next";
 
 export default function LoginPage() {
   const [email, setEmail] = useState("");
@@ -8,6 +9,7 @@ export default function LoginPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const { t } = useTranslation();
 
   const handleLogin = async (e) => {
     e.preventDefault();
@@ -20,7 +22,7 @@ export default function LoginPage() {
         body: JSON.stringify({ email, password }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Login failed");
+      if (!res.ok) throw new Error(data.detail || t("error_something_wrong"));
 
       localStorage.setItem("token", data.access_token);
 
@@ -33,7 +35,7 @@ export default function LoginPage() {
 
       router.push("/home");
     } catch (err) {
-      setError(err.message);
+      setError(err.message || t("error_something_wrong"));
     } finally {
       setLoading(false);
     }
@@ -70,14 +72,14 @@ export default function LoginPage() {
               letterSpacing: "0.15em",
               color: "#ffffff",
               marginBottom: "8px",
-            }}>SPACEINTEL</h1>
+            }}>{t("app_name")}</h1>
           </span>
           <p style={{
             fontFamily: "JetBrains Mono, monospace",
             fontSize: "10px",
             letterSpacing: "3px",
             color: "rgba(255,255,255,0.3)",
-          }}>MISSION ACCESS PORTAL</p>
+          }}>{t("login_title")}</p>
         </div>
 
         <div style={{
@@ -96,7 +98,7 @@ export default function LoginPage() {
                 color: "rgba(0,212,255,0.7)",
                 display: "block",
                 marginBottom: "8px",
-              }}>EMAIL</label>
+              }}>{t("login_email")}</label>
               <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
                 className="w-full px-4 py-3 rounded-xl text-white focus:outline-none transition-all"
                 style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", fontSize: "14px", fontFamily: "DM Sans, sans-serif" }}
@@ -112,7 +114,7 @@ export default function LoginPage() {
                 color: "rgba(0,212,255,0.7)",
                 display: "block",
                 marginBottom: "8px",
-              }}>PASSWORD</label>
+              }}>{t("login_password")}</label>
               <input type="password" value={password} onChange={e => setPassword(e.target.value)} required
                 className="w-full px-4 py-3 rounded-xl text-white focus:outline-none transition-all"
                 style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", fontSize: "14px", fontFamily: "DM Sans, sans-serif" }}
@@ -139,7 +141,7 @@ export default function LoginPage() {
               }}
               onMouseEnter={e => e.currentTarget.style.background = "linear-gradient(135deg, rgba(0,212,255,0.25), rgba(123,95,255,0.25))"}
               onMouseLeave={e => e.currentTarget.style.background = "linear-gradient(135deg, rgba(0,212,255,0.15), rgba(123,95,255,0.15))"}>
-              {loading ? "AUTHENTICATING..." : "LOGIN"}
+              {loading ? t("login_authenticating") : t("login_button")}
             </button>
           </form>
 
@@ -149,10 +151,10 @@ export default function LoginPage() {
             letterSpacing: "1px",
             color: "rgba(255,255,255,0.25)",
           }}>
-            NO ACCOUNT?{" "}
+            {t("login_register")}{" "}
             <span onClick={() => router.push("/register")} className="cursor-pointer"
               style={{ color: "rgba(0,212,255,0.6)" }}>
-              REGISTER →
+              →
             </span>
           </p>
         </div>

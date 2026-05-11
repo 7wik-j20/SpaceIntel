@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslation } from "react-i18next";
 
 function StarField() {
   const canvasRef = useRef(null);
@@ -232,6 +233,7 @@ export default function LandingPage() {
   const [pulse, setPulse] = useState(false);
   const [launching, setLaunching] = useState(false);
   const router = useRouter();
+  const { t } = useTranslation();
 
   useEffect(() => {
     const t1 = setTimeout(() => setVisible(true), 300);
@@ -284,7 +286,7 @@ export default function LandingPage() {
             marginBottom: "8px",
             textShadow: "0 0 60px rgba(0,212,255,0.15)",
           }}>
-            SPACEINTEL
+            {t("app_name").toUpperCase()}
           </h1>
           <div style={{
             fontFamily: "JetBrains Mono, monospace",
@@ -293,7 +295,7 @@ export default function LandingPage() {
             color: "rgba(255,255,255,0.45)",
             marginBottom: "56px",
           }}>
-            AI RESEARCH INTELLIGENCE
+            {t("landing_subtitle")}
           </div>
         </div>
 
@@ -363,7 +365,7 @@ export default function LandingPage() {
               textAlign: "center",
               transition: "color 0.3s",
             }}>
-              {launching ? "LAUNCHING" : "GET\nSTARTED"}
+              {launching ? t("landing_launching") : t("landing_get_started")}
             </span>
             <span style={{
               color: launching ? "rgba(0,212,255,0.9)" : "rgba(255,255,255,0.5)",
@@ -390,7 +392,7 @@ export default function LandingPage() {
             }}
             onMouseEnter={e => e.currentTarget.style.color = "rgba(0,212,255,0.8)"}
             onMouseLeave={e => e.currentTarget.style.color = "rgba(255,255,255,0.3)"}>
-            ALREADY HAVE AN ACCOUNT? LOGIN →
+            {`${t("register_login")} →`}
           </span>
         </div>
       </div>
@@ -403,7 +405,7 @@ export default function LandingPage() {
           letterSpacing: "2px",
           color: "rgba(255,255,255,0.18)",
         }}>
-          © 2025 SPACEINTEL. ALL RIGHTS RESERVED.
+          {`© 2025 ${t("app_name").toUpperCase()}. ${t("landing_rights").toUpperCase()}`}
         </p>
       </div>
 

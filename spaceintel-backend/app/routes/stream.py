@@ -9,10 +9,48 @@ from app.services.memory import get_history, save_turn, generate_session_id
 from app.core.security import decode_token
 from app.core.config import settings
 from groq import Groq
+from pydantic import BaseModel
 import json
 
 router = APIRouter()
 client = Groq(api_key=settings.GROQ_API_KEY)
+
+LANGUAGE_ALIASES = {
+    "en": "en",
+    "english": "en",
+    "hi": "hi",
+    "hindi": "hi",
+    "te": "te",
+    "telugu": "te",
+    "ta": "ta",
+    "tamil": "ta",
+    "kn": "kn",
+    "kannada": "kn",
+    "bn": "bn",
+    "bengali": "bn",
+    "ml": "ml",
+    "malayalam": "ml",
+}
+
+LANGUAGE_NAMES = {
+    "en": "English",
+    "hi": "Hindi (Devanagari)",
+    "te": "Telugu",
+    "ta": "Tamil",
+    "kn": "Kannada",
+    "bn": "Bengali",
+    "ml": "Malayalam",
+}
+
+SPACE_TOPIC_GUARDRAIL_MESSAGES = {
+    "en": "SpaceIntel is restricted to space research topics only. Please ask questions related to space missions, satellites, or aerospace.",
+    "hi": "SpaceIntel केवल अंतरिक्ष अनुसंधान विषयों तक सीमित है। कृपया अंतरिक्ष मिशनों, उपग्रहों या एयरोस्पेस से संबंधित प्रश्न पूछें।",
+    "te": "SpaceIntel అంతరిక్ష పరిశోధన అంశాలకు మాత్రమే పరిమితం. దయచేసి అంతరిక్ష మిషన్లు, ఉపగ్రహాలు లేదా ఏరోస్పేస్‌కు సంబంధించిన ప్రశ్నలు అడగండి.",
+    "ta": "SpaceIntel விண்வெளி ஆராய்ச்சி தலைப்புகளுக்கு மட்டும் கட்டுப்படுத்தப்பட்டுள்ளது. தயவுசெய்து விண்வெளி பயணங்கள், செயற்கைக்கோள்கள் அல்லது ஏரோஸ்பேஸ் தொடர்பான கேள்விகளை கேளுங்கள்.",
+    "kn": "SpaceIntel ಅಂತರಿಕ್ಷ ಸಂಶೋಧನಾ ವಿಷಯಗಳಿಗೆ ಮಾತ್ರ ಸೀಮಿತವಾಗಿದೆ. ದಯವಿಟ್ಟು ಅಂತರಿಕ್ಷ ಮಿಷನ್‌ಗಳು, ಉಪಗ್ರಹಗಳು ಅಥವಾ ಏರೋಸ್ಪೇಸ್ ಸಂಬಂಧಿತ ಪ್ರಶ್ನೆಗಳನ್ನು ಕೇಳಿ.",
+    "bn": "SpaceIntel শুধুমাত্র মহাকাশ গবেষণা বিষয়ের জন্য সীমাবদ্ধ। অনুগ্রহ করে মহাকাশ মিশন, উপগ্রহ বা অ্যারোস্পেস সম্পর্কিত প্রশ্ন করুন।",
+    "ml": "SpaceIntel ബഹിരാകാശ ഗവേഷണ വിഷയങ്ങൾക്കു മാത്രം പരിമിതപ്പെടുത്തിയിരിക്കുന്നു. ദയവായി ബഹിരാകാശ ദൗത്യങ്ങൾ, ഉപഗ്രഹങ്ങൾ, അല്ലെങ്കിൽ എയർോസ്പേസ് സംബന്ധമായ ചോദ്യങ്ങൾ ചോദിക്കുക.",
+}
 
 
 # --- Helpers ---
@@ -23,19 +61,171 @@ def is_clean_text(text: str) -> bool:
     non_ascii = sum(1 for c in text if ord(c) > 127)
     return (non_ascii / len(text)) < 0.3
 
+
+def normalize_output_language(preferred_language: str = "en") -> str:
+    raw = (preferred_language or "en").strip().lower()
+    return LANGUAGE_ALIASES.get(raw, "en")
+
+
+def get_space_topic_guardrail_message(language_code: str = "en") -> str:
+    return SPACE_TOPIC_GUARDRAIL_MESSAGES.get(language_code, SPACE_TOPIC_GUARDRAIL_MESSAGES["en"])
+
+
+class NewsTranslationItem(BaseModel):
+    id: str
+    title: str = ""
+    summary: str = ""
+
+
+class NewsTranslationRequest(BaseModel):
+    language: str = "en"
+    articles: list[NewsTranslationItem] = []
+
+
+def build_news_translation_prompt(articles: list[dict], language_code: str) -> str:
+    target_language = LANGUAGE_NAMES.get(language_code, "English")
+    payload = json.dumps(articles, ensure_ascii=False)
+    return f"""Translate each article title and summary to {target_language}.
+Rules:
+- Preserve each article id exactly.
+- Keep named entities, mission names, acronyms, and numbers accurate.
+- Return only valid JSON array (no markdown, no explanation).
+- Output format for each item: {{\"id\":\"...\",\"title\":\"...\",\"summary\":\"...\"}}
+
+Input JSON:
+{payload}
+"""
+
+
+@router.post("/news/translate")
+def translate_news_items(payload: NewsTranslationRequest):
+    language_code = normalize_output_language(payload.language)
+    if language_code == "en" or not payload.articles:
+        return {
+            "items": [
+                {"id": item.id, "title": item.title, "summary": item.summary}
+                for item in payload.articles
+            ]
+        }
+
+    source_items = [
+        {
+            "id": str(item.id),
+            "title": (item.title or "")[:240],
+            "summary": (item.summary or "")[:900],
+        }
+        for item in payload.articles[:20]
+    ]
+
+    prompt = build_news_translation_prompt(source_items, language_code)
+
+    try:
+        completion = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+            max_tokens=3200,
+            stream=False,
+        )
+        raw_content = (completion.choices[0].message.content or "").strip()
+        parsed = json.loads(raw_content)
+
+        if not isinstance(parsed, list):
+            raise ValueError("Translation payload is not a list")
+
+        translated_by_id = {}
+        for item in parsed:
+            if not isinstance(item, dict):
+                continue
+            item_id = str(item.get("id", "")).strip()
+            if not item_id:
+                continue
+            translated_by_id[item_id] = {
+                "id": item_id,
+                "title": str(item.get("title", "")).strip(),
+                "summary": str(item.get("summary", "")).strip(),
+            }
+
+        response_items = []
+        for src in source_items:
+            translated = translated_by_id.get(src["id"])
+            if translated:
+                response_items.append(translated)
+            else:
+                response_items.append(src)
+
+        return {"items": response_items}
+    except Exception:
+        return {"items": source_items}
+
+
+def text_matches_language(text: str, language_code: str) -> bool:
+    sample = (text or "").strip()
+    if not sample:
+        return False
+
+    if language_code == "en":
+        return True
+
+    script_ranges = {
+        "hi": ('\u0900', '\u097F'),
+        "bn": ('\u0980', '\u09FF'),
+        "ta": ('\u0B80', '\u0BFF'),
+        "te": ('\u0C00', '\u0C7F'),
+        "kn": ('\u0C80', '\u0CFF'),
+        "ml": ('\u0D00', '\u0D7F'),
+    }
+    start, end = script_ranges.get(language_code, ('\u0000', '\u0000'))
+    script_chars = sum(1 for c in sample if start <= c <= end)
+    return script_chars >= 8
+
+
+def enforce_answer_language(answer: str, language_code: str, max_tokens: int) -> str:
+    if language_code == "en" or text_matches_language(answer, language_code):
+        return answer
+
+    target_language = LANGUAGE_NAMES.get(language_code, "English")
+    translate_prompt = f"""Translate the following answer to {target_language}.
+Keep meaning, structure, headings, bullets, numbers, and technical terms accurate.
+Output only the translated answer.
+
+Answer to translate:
+{answer}
+"""
+
+    try:
+        translated = client.chat.completions.create(
+            model="llama-3.3-70b-versatile",
+            messages=[{"role": "user", "content": translate_prompt}],
+            temperature=0,
+            max_tokens=max_tokens,
+            stream=False,
+        )
+        translated_text = (translated.choices[0].message.content or "").strip()
+        return translated_text or answer
+    except Exception:
+        return answer
+
 def detect_language_instruction(question: str, preferred_language: str = "English") -> str:
-    preferred = (preferred_language or "English").strip().lower()
+    preferred = normalize_output_language(preferred_language)
     language_map = {
-        "english": "Respond in English.",
-        "hindi": "Respond in Hindi language using Devanagari script.",
-        "telugu": "Respond in Telugu language.",
-        "tamil": "Respond in Tamil language.",
-        "kannada": "Respond in Kannada language.",
-        "bengali": "Respond in Bengali language.",
-        "malayalam": "Respond in Malayalam language.",
+        "en": "You MUST respond only in English, regardless of the language used in the question.",
+        "english": "You MUST respond only in English, regardless of the language used in the question.",
+        "hi": "You MUST respond only in Hindi language using Devanagari script, regardless of the language used in the question.",
+        "hindi": "You MUST respond only in Hindi language using Devanagari script, regardless of the language used in the question.",
+        "te": "You MUST respond only in Telugu language, regardless of the language used in the question.",
+        "telugu": "You MUST respond only in Telugu language, regardless of the language used in the question.",
+        "ta": "You MUST respond only in Tamil language, regardless of the language used in the question.",
+        "tamil": "You MUST respond only in Tamil language, regardless of the language used in the question.",
+        "kn": "You MUST respond only in Kannada language, regardless of the language used in the question.",
+        "kannada": "You MUST respond only in Kannada language, regardless of the language used in the question.",
+        "bn": "You MUST respond only in Bengali language, regardless of the language used in the question.",
+        "bengali": "You MUST respond only in Bengali language, regardless of the language used in the question.",
+        "ml": "You MUST respond only in Malayalam language, regardless of the language used in the question.",
+        "malayalam": "You MUST respond only in Malayalam language, regardless of the language used in the question.",
     }
 
-    if preferred in language_map and preferred != "english":
+    if preferred in language_map:
         return language_map[preferred]
 
     hindi_chars     = sum(1 for c in question if '\u0900' <= c <= '\u097F')
@@ -46,30 +236,47 @@ def detect_language_instruction(question: str, preferred_language: str = "Englis
     bengali_chars   = sum(1 for c in question if '\u0980' <= c <= '\u09FF')
 
     if hindi_chars > 2:
-        return "The user is asking in Hindi. Respond in Hindi language using Devanagari script."
+        return "The user is asking in Hindi. Respond only in Hindi language using Devanagari script."
     elif tamil_chars > 2:
-        return "The user is asking in Tamil. Respond in Tamil language."
+        return "The user is asking in Tamil. Respond only in Tamil language."
     elif telugu_chars > 2:
-        return "The user is asking in Telugu. Respond in Telugu language."
+        return "The user is asking in Telugu. Respond only in Telugu language."
     elif kannada_chars > 2:
-        return "The user is asking in Kannada. Respond in Kannada language."
+        return "The user is asking in Kannada. Respond only in Kannada language."
     elif malayalam_chars > 2:
-        return "The user is asking in Malayalam. Respond in Malayalam language."
+        return "The user is asking in Malayalam. Respond only in Malayalam language."
     elif bengali_chars > 2:
-        return "The user is asking in Bengali. Respond in Bengali language."
+        return "The user is asking in Bengali. Respond only in Bengali language."
     else:
-        return "Respond in English."
+        return "Respond only in English."
 
-def resolve_generation_preferences(response_length: str) -> tuple[int, float]:
+def get_length_instruction(response_length: str) -> str:
     length = (response_length or "balanced").strip().lower()
     if length == "concise":
-        return 500, 0.1
+        return "Keep the answer concise. Lead with the direct answer and include only the most relevant supporting details."
     if length == "detailed":
-        return 1300, 0.35
-    return 900, 0.2
+        return "Provide a detailed answer with clear explanations, important caveats, and structured supporting points when useful."
+    return "Provide a balanced answer with a direct response followed by the most useful supporting detail."
 
 
-def build_history_prompt(history: list, question: str, context: str, preferred_language: str = "English") -> str:
+def resolve_generation_preferences(response_length: str, strategy_max_tokens: int) -> tuple[int, float]:
+    strategy_limit = max(strategy_max_tokens or 900, 400)
+    length = (response_length or "balanced").strip().lower()
+
+    if length == "concise":
+        return max(300, int(strategy_limit * 0.6)), 0.1
+    if length == "detailed":
+        return min(1800, int(strategy_limit * 1.4)), 0.3
+    return strategy_limit, 0.2
+
+
+def build_history_prompt(
+    history: list,
+    question: str,
+    context: str,
+    preferred_language: str = "English",
+    response_length: str = "balanced"
+) -> str:
     history_text = ""
     if history:
         history_text = "Previous conversation:\n"
@@ -78,11 +285,15 @@ def build_history_prompt(history: list, question: str, context: str, preferred_l
             history_text += f"Assistant: {turn['answer'][:300]}...\n\n"
 
     lang_instruction = detect_language_instruction(question, preferred_language)
+    length_instruction = get_length_instruction(response_length)
 
     return f"""You are SpaceIntel, an AI assistant for space research documents.
 Use the context and conversation history below to answer the question.
 If the question refers to something mentioned earlier, use the history to understand it.
 {lang_instruction}
+Do not switch output language based on user question language. Follow the selected output language instruction strictly.
+{length_instruction}
+Base your answer only on the supplied document context and clearly say when the documents do not contain the answer.
 
 {history_text}
 Current Context:
@@ -108,7 +319,7 @@ async def websocket_ask(websocket: WebSocket):
             filename = payload.get("filename")
             session_id = payload.get("session_id")
             response_length = payload.get("response_length", "balanced")
-            preferred_language = payload.get("language", "English")
+            preferred_language = normalize_output_language(payload.get("language", "en"))
 
             # Extract user_id from JWT
             user_id = None
@@ -140,7 +351,7 @@ async def websocket_ask(websocket: WebSocket):
             if not is_space_related(question):
                 await websocket.send_text(json.dumps({
                     "type": "answer",
-                    "content": "SpaceIntel is restricted to space research topics only. Please ask questions related to space missions, satellites, or aerospace."
+                    "content": get_space_topic_guardrail_message(preferred_language)
                 }))
                 await websocket.send_text(json.dumps({
                     "type": "done", "sources": [], "fact_check": []
@@ -149,8 +360,16 @@ async def websocket_ask(websocket: WebSocket):
                 continue
 
             # Cache check
-            cached = get_cached_response(question)
+            cached = get_cached_response(
+                question,
+                user_id=user_id,
+                filename=filename,
+                response_length=response_length,
+                language=preferred_language,
+            )
             if cached:
+                if user_id:
+                    save_turn(user_id, question, cached["answer"], session_id=session_id)
                 await websocket.send_text(json.dumps({
                     "type": "answer",
                     "content": cached["answer"] + " ⚡ (cached)"
@@ -214,26 +433,52 @@ async def websocket_ask(websocket: WebSocket):
                 continue
 
             # Build prompt with history
-            prompt = build_history_prompt(chat_history, question, context, preferred_language)
-            preferred_tokens, preferred_temperature = resolve_generation_preferences(response_length)
-            max_tokens = min(strategy["max_tokens"], preferred_tokens)
+            prompt = build_history_prompt(
+                chat_history,
+                question,
+                context,
+                preferred_language,
+                response_length,
+            )
+            max_tokens, preferred_temperature = resolve_generation_preferences(
+                response_length,
+                strategy["max_tokens"],
+            )
 
             # Stream tokens
             full_answer = ""
-            stream = client.chat.completions.create(
-                model="llama-3.3-70b-versatile",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=preferred_temperature,
-                max_tokens=max_tokens,
-                stream=True
-            )
+            if preferred_language == "en":
+                stream = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=preferred_temperature,
+                    max_tokens=max_tokens,
+                    stream=True
+                )
 
-            for chunk in stream:
-                delta = chunk.choices[0].delta.content
-                if delta:
-                    full_answer += delta
+                for chunk in stream:
+                    delta = chunk.choices[0].delta.content
+                    if delta:
+                        full_answer += delta
+                        await websocket.send_text(json.dumps({
+                            "type":    "token",
+                            "content": delta
+                        }))
+            else:
+                completion = client.chat.completions.create(
+                    model="llama-3.3-70b-versatile",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=preferred_temperature,
+                    max_tokens=max_tokens,
+                    stream=False
+                )
+                generated = (completion.choices[0].message.content or "").strip()
+                full_answer = enforce_answer_language(generated, preferred_language, max_tokens)
+
+                for idx in range(0, len(full_answer), 80):
+                    delta = full_answer[idx:idx + 80]
                     await websocket.send_text(json.dumps({
-                        "type":    "token",
+                        "type": "token",
                         "content": delta
                     }))
 
@@ -245,11 +490,18 @@ async def websocket_ask(websocket: WebSocket):
             fact_results = fact_check_answer(full_answer, relevant_chunks)
 
             # Cache result
-            set_cached_response(question, {
-                "answer":     full_answer,
-                "sources":    sources,
-                "fact_check": fact_results
-            })
+            set_cached_response(
+                question,
+                {
+                    "answer":     full_answer,
+                    "sources":    sources,
+                    "fact_check": fact_results
+                },
+                user_id=user_id,
+                filename=filename,
+                response_length=response_length,
+                language=preferred_language,
+            )
 
             await websocket.send_text(json.dumps({
                 "type":       "done",

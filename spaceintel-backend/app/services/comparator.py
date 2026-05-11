@@ -9,6 +9,28 @@ llm = ChatGroq(
     temperature=0.2
 )
 
+LANGUAGE_INSTRUCTIONS = {
+    "en": "Respond in English.",
+    "english": "Respond in English.",
+    "hi": "Respond in Hindi language using Devanagari script.",
+    "hindi": "Respond in Hindi language using Devanagari script.",
+    "te": "Respond in Telugu language.",
+    "telugu": "Respond in Telugu language.",
+    "ta": "Respond in Tamil language.",
+    "tamil": "Respond in Tamil language.",
+    "kn": "Respond in Kannada language.",
+    "kannada": "Respond in Kannada language.",
+    "ml": "Respond in Malayalam language.",
+    "malayalam": "Respond in Malayalam language.",
+    "bn": "Respond in Bengali language.",
+    "bengali": "Respond in Bengali language.",
+}
+
+
+def get_language_instruction(preferred_language: str = "en") -> str:
+    key = (preferred_language or "en").strip().lower()
+    return LANGUAGE_INSTRUCTIONS.get(key, LANGUAGE_INSTRUCTIONS["en"])
+
 def get_document_chunks(filename: str, user_id: str = None, limit: int = 20) -> list:
     try:
         must_conditions = [FieldCondition(key="filename", match=MatchValue(value=filename))]
@@ -26,7 +48,7 @@ def get_document_chunks(filename: str, user_id: str = None, limit: int = 20) -> 
     except Exception:
         return []
 
-def compare_documents(filename1: str, filename2: str, user_id: str = None) -> dict:
+def compare_documents(filename1: str, filename2: str, user_id: str = None, language: str = "en") -> dict:
     chunks1 = get_document_chunks(filename1, user_id=user_id)
     chunks2 = get_document_chunks(filename2, user_id=user_id)
 
@@ -35,8 +57,11 @@ def compare_documents(filename1: str, filename2: str, user_id: str = None) -> di
 
     text1 = "\n\n".join(chunks1[:12])
     text2 = "\n\n".join(chunks2[:12])
+    language_instruction = get_language_instruction(language)
 
     prompt = f"""You are a space research analyst. Compare these two space documents and provide a detailed structured comparison.
+{language_instruction}
+Write the entire response in that language, including all section headings.
 
 Document 1: {filename1}
 Content:
@@ -54,7 +79,7 @@ Provide a comparison with these sections:
 5. KEY DIFFERENCES: Most important differences between them
 6. SIMILARITIES: What do they have in common?
 
-Format clearly with section headers."""
+Format clearly with section headers in the selected language."""
 
     try:
         response = llm.invoke(prompt)

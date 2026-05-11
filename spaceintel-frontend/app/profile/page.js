@@ -2,6 +2,30 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import axios from "axios";
+import { useTranslation } from "react-i18next";
+import { useLanguage } from "../../context/LanguageContext";
+import LanguageSelector from "../components/LanguageSelector";
+
+const DEFAULT_SETTINGS = {
+  language: "en",
+  notifications: true,
+  autoExport: false,
+  fontSize: "medium",
+  responseLength: "balanced",
+};
+
+const FONT_SIZE_MAP = { small: "14px", medium: "16px", large: "18px" };
+const META_FONT_SIZE_MAP = { small: "10px", medium: "11px", large: "12px" };
+const TITLE_FONT_SIZE_MAP = { small: "22px", medium: "24px", large: "28px" };
+const LANGUAGE_NAME_TO_CODE = {
+  English: "en",
+  Hindi: "hi",
+  Telugu: "te",
+  Tamil: "ta",
+  Kannada: "kn",
+  Malayalam: "ml",
+  Bengali: "bn",
+};
 
 function StarField() {
   const canvasRef = useRef(null);
@@ -38,28 +62,23 @@ function StarField() {
   return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none" style={{ zIndex: 0 }} />;
 }
 
-const sidebarItems = [
-  { key: "personal", label: "Personal Details", icon: "◎" },
-  { key: "library", label: "Library", icon: "▦" },
-  { key: "settings", label: "Settings", icon: "⚙" },
-];
-
 export default function ProfilePage() {
   const [activeTab, setActiveTab] = useState("personal");
   const [user, setUser] = useState(null);
   const [docs, setDocs] = useState([]);
-  const [settings, setSettings] = useState({
-    language: "English",
-    notifications: true,
-    autoExport: false,
-    fontSize: "medium",
-    responseLength: "balanced",
-  });
+  const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [saved, setSaved] = useState(false);
   const router = useRouter();
+  const { t } = useTranslation();
+  const { changeLanguage } = useLanguage();
+
+  const sidebarItems = [
+    { key: "personal", label: t("profile_personal_details"), icon: "◎" },
+    { key: "library", label: t("nav_library"), icon: "▦" },
+    { key: "settings", label: t("nav_settings"), icon: "⚙" },
+  ];
 
   const getToken = () => localStorage.getItem("token");
-  const authHeader = () => ({ Authorization: `Bearer ${getToken()}` });
 
   const openPdf = (filename) => {
     const token = getToken();
@@ -70,6 +89,8 @@ export default function ProfilePage() {
   };
 
   useEffect(() => {
+    const fallbackLanguage = localStorage.getItem("spaceintel_language") || "en";
+
     const stored = localStorage.getItem("user");
     if (stored) {
       setUser(JSON.parse(stored));
@@ -84,21 +105,36 @@ export default function ProfilePage() {
     }
 
     const savedSettings = localStorage.getItem("spaceintel_settings");
-    if (savedSettings) setSettings(JSON.parse(savedSettings));
+    if (savedSettings) {
+      try {
+        const parsed = JSON.parse(savedSettings);
+        const normalizedLanguage = LANGUAGE_NAME_TO_CODE[parsed.language] || parsed.language || fallbackLanguage;
+        setSettings({ ...DEFAULT_SETTINGS, ...parsed, language: normalizedLanguage });
+      } catch {
+        setSettings({ ...DEFAULT_SETTINGS, language: fallbackLanguage });
+      }
+    } else {
+      setSettings({ ...DEFAULT_SETTINGS, language: fallbackLanguage });
+    }
 
-    axios.get("http://localhost:8000/documents/list", { headers: authHeader() })
+    const token = getToken();
+    const headers = token ? { Authorization: `Bearer ${token}` } : {};
+    axios.get("http://localhost:8000/documents/list", { headers })
       .then(res => setDocs(res.data))
       .catch(() => setDocs([]));
   }, []);
 
   const handleLogout = () => {
+    if (!window.confirm(t("logout_confirm"))) return;
     localStorage.removeItem("token");
     localStorage.removeItem("user");
     localStorage.removeItem("spaceintel_settings");
     router.push("/");
   };
 
-  const handleSaveSettings = () => {
+  const handleSaveSettings = async () => {
+    await changeLanguage(settings.language);
+    localStorage.setItem("spaceintel_language", settings.language);
     localStorage.setItem("spaceintel_settings", JSON.stringify(settings));
     window.dispatchEvent(new CustomEvent("spaceintel:settings-updated", { detail: settings }));
     setSaved(true);
@@ -120,6 +156,10 @@ export default function ProfilePage() {
     color: "rgba(255,255,255,0.8)",
   };
 
+  const activeFontSize = FONT_SIZE_MAP[settings.fontSize] || FONT_SIZE_MAP.medium;
+  const activeMetaFontSize = META_FONT_SIZE_MAP[settings.fontSize] || META_FONT_SIZE_MAP.medium;
+  const activeTitleFontSize = TITLE_FONT_SIZE_MAP[settings.fontSize] || TITLE_FONT_SIZE_MAP.medium;
+
   return (
     <div className="min-h-screen flex" style={{ background: "#03060e" }}>
       <StarField />
@@ -139,10 +179,10 @@ export default function ProfilePage() {
               style={{ background: "rgba(0,212,255,0.08)", border: "1px solid rgba(0,212,255,0.2)" }}>✦</div>
             <div>
               <h1 className="font-bold text-white tracking-widest text-sm"
-                style={{ fontFamily: "Orbitron, sans-serif" }}>SPACEINTEL</h1>
+                style={{ fontFamily: "Orbitron, sans-serif" }}>{t("app_name").toUpperCase()}</h1>
               <p className="text-xs tracking-wider"
                 style={{ color: "rgba(0,212,255,0.4)", fontFamily: "JetBrains Mono, monospace" }}>
-                USER PROFILE
+                {t("nav_profile").toUpperCase()}
               </p>
             </div>
           </div>
@@ -163,7 +203,7 @@ export default function ProfilePage() {
           </p>
           <div className="mt-3 px-3 py-1 rounded-full text-xs"
             style={{ background: "rgba(0,230,118,0.08)", border: "1px solid rgba(0,230,118,0.2)", color: "#00e676", fontFamily: "JetBrains Mono, monospace", letterSpacing: "1px" }}>
-            ACTIVE
+            {t("profile_active").toUpperCase()}
           </div>
         </div>
 
@@ -194,7 +234,7 @@ export default function ProfilePage() {
             onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.05)"; e.currentTarget.style.color = "rgba(255,255,255,0.7)"; }}
             onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.02)"; e.currentTarget.style.color = "rgba(255,255,255,0.4)"; }}>
             <span>←</span>
-            <span className="text-sm tracking-wider">Back to App</span>
+            <span className="text-sm tracking-wider">{t("profile_back_to_app")}</span>
           </button>
           <button onClick={handleLogout}
             className="flex items-center gap-3 px-4 py-3 rounded-lg transition-all duration-200 w-full"
@@ -202,7 +242,7 @@ export default function ProfilePage() {
             onMouseEnter={e => e.currentTarget.style.background = "rgba(255,82,82,0.12)"}
             onMouseLeave={e => e.currentTarget.style.background = "rgba(255,82,82,0.05)"}>
             <span>⏻</span>
-            <span className="text-sm tracking-wider" style={{ fontFamily: "JetBrains Mono, monospace" }}>LOGOUT</span>
+            <span className="text-sm tracking-wider" style={{ fontFamily: "JetBrains Mono, monospace" }}>{t("nav_logout").toUpperCase()}</span>
           </button>
         </div>
       </aside>
@@ -217,35 +257,35 @@ export default function ProfilePage() {
               <div className="flex items-center gap-3 mb-2">
                 <div className="w-1.5 h-1.5 rounded-full bg-cyan-400"
                   style={{ animation: "pulse 1.5s infinite", boxShadow: "0 0 6px rgba(0,212,255,0.8)" }} />
-                <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: "10px", letterSpacing: "3px", color: "rgba(0,212,255,0.6)" }}>
-                  ACCOUNT INFO
+                <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: activeMetaFontSize, letterSpacing: "3px", color: "rgba(0,212,255,0.6)" }}>
+                  {t("profile_account_info")}
                 </span>
               </div>
-              <h2 style={{ fontFamily: "Orbitron, sans-serif", fontSize: "24px", fontWeight: 900, color: "#fff", letterSpacing: "0.1em" }}>
-                PERSONAL DETAILS
+              <h2 style={{ fontFamily: "Orbitron, sans-serif", fontSize: activeTitleFontSize, fontWeight: 900, color: "#fff", letterSpacing: "0.1em" }}>
+                {t("profile_personal_details").toUpperCase()}
               </h2>
             </div>
 
             <div className="rounded-2xl p-8 space-y-6"
               style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
               {[
-                { label: "NAME", value: user?.username || "—" },
-                { label: "EMAIL ADDRESS", value: user?.email || "—" },
-                { label: "ACCOUNT TYPE", value: "Researcher" },
-                { label: "MEMBER SINCE", value: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long" }) },
-                { label: "STATUS", value: "Active" },
+                { label: t("profile_name"), value: user?.username || "—" },
+                { label: t("profile_email"), value: user?.email || "—" },
+                { label: t("profile_account_type"), value: t("profile_researcher") },
+                { label: t("profile_member_since"), value: new Date().toLocaleDateString("en-US", { year: "numeric", month: "long" }) },
+                { label: t("profile_status"), value: t("profile_active") },
               ].map((item) => (
                 <div key={item.label} className="pb-6"
                   style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
                   <label style={labelStyle}>{item.label}</label>
-                  <p style={item.label === "STATUS" ? { ...valueStyle, color: "#00e676" } : valueStyle}>
+                  <p style={item.label === t("profile_status") ? { ...valueStyle, color: "#00e676" } : valueStyle}>
                     {item.value}
                   </p>
                 </div>
               ))}
               <div>
-                <label style={labelStyle}>DOCUMENTS INDEXED</label>
-                <p style={{ ...valueStyle, color: "#00d4ff" }}>{docs.length} documents</p>
+                <label style={labelStyle}>{t("profile_documents_indexed")}</label>
+                <p style={{ ...valueStyle, color: "#00d4ff" }}>{docs.length} {docs.length === 1 ? "document" : "documents"}</p>
               </div>
             </div>
           </div>
@@ -263,7 +303,7 @@ export default function ProfilePage() {
                 </span>
               </div>
               <h2 style={{ fontFamily: "Orbitron, sans-serif", fontSize: "24px", fontWeight: 900, color: "#fff", letterSpacing: "0.1em" }}>
-                LIBRARY
+                {t("library_title").toUpperCase()}
               </h2>
             </div>
 
@@ -272,7 +312,7 @@ export default function ProfilePage() {
                 style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
                 <div className="text-4xl mb-4" style={{ opacity: 0.1 }}>▦</div>
                 <p style={{ color: "rgba(255,255,255,0.3)", fontFamily: "DM Sans, sans-serif" }}>
-                  No documents uploaded yet
+                  {t("library_empty")}
                 </p>
               </div>
             ) : (
@@ -313,7 +353,7 @@ export default function ProfilePage() {
                       style={{ background: "rgba(0,212,255,0.05)", border: "1px solid rgba(0,212,255,0.15)", color: "#00d4ff", fontFamily: "JetBrains Mono, monospace" }}
                       onMouseEnter={e => e.currentTarget.style.background = "rgba(0,212,255,0.12)"}
                       onMouseLeave={e => e.currentTarget.style.background = "rgba(0,212,255,0.05)"}>
-                      VIEW →
+                      {t("chat_sources").toUpperCase()} →
                     </button>
                   </div>
                 ))}
@@ -330,20 +370,28 @@ export default function ProfilePage() {
                 <div className="w-1.5 h-1.5 rounded-full bg-cyan-400"
                   style={{ animation: "pulse 1.5s infinite", boxShadow: "0 0 6px rgba(0,212,255,0.8)" }} />
                 <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: "10px", letterSpacing: "3px", color: "rgba(0,212,255,0.6)" }}>
-                  PREFERENCES
+                  {t("profile_preferences")}
                 </span>
               </div>
               <h2 style={{ fontFamily: "Orbitron, sans-serif", fontSize: "24px", fontWeight: 900, color: "#fff", letterSpacing: "0.1em" }}>
-                SETTINGS
+                {t("settings_title").toUpperCase()}
               </h2>
             </div>
 
             <div className="rounded-2xl p-8 space-y-8"
               style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
 
+              <div className="rounded-2xl p-5"
+                style={{ background: "rgba(123,95,255,0.06)", border: "1px solid rgba(123,95,255,0.14)" }}>
+                <p style={{ ...labelStyle, marginBottom: "10px", fontSize: activeMetaFontSize }}>{t("profile_live_preview")}</p>
+                <p style={{ fontSize: activeFontSize, color: "rgba(255,255,255,0.88)", fontFamily: "DM Sans, sans-serif", lineHeight: 1.7 }}>
+                  {t("profile_live_preview_desc")}
+                </p>
+              </div>
+
               {/* Response Length */}
               <div>
-                <label style={labelStyle}>RESPONSE LENGTH</label>
+                <label style={{ ...labelStyle, fontSize: activeMetaFontSize }}>{t("profile_response_length")}</label>
                 <div className="flex gap-3 mt-2">
                   {["concise", "balanced", "detailed"].map(opt => (
                     <button key={opt} onClick={() => setSettings(s => ({ ...s, responseLength: opt }))}
@@ -353,6 +401,7 @@ export default function ProfilePage() {
                         border: settings.responseLength === opt ? "1px solid rgba(0,212,255,0.4)" : "1px solid rgba(255,255,255,0.08)",
                         color: settings.responseLength === opt ? "#00d4ff" : "rgba(255,255,255,0.4)",
                         fontFamily: "JetBrains Mono, monospace",
+                        fontSize: activeMetaFontSize,
                         letterSpacing: "1px",
                       }}>
                       {opt.toUpperCase()}
@@ -363,7 +412,7 @@ export default function ProfilePage() {
 
               {/* Font Size */}
               <div>
-                <label style={labelStyle}>FONT SIZE</label>
+                <label style={{ ...labelStyle, fontSize: activeMetaFontSize }}>{t("profile_font_size")}</label>
                 <div className="flex gap-3 mt-2">
                   {["small", "medium", "large"].map(opt => (
                     <button key={opt} onClick={() => setSettings(s => ({ ...s, fontSize: opt }))}
@@ -373,6 +422,7 @@ export default function ProfilePage() {
                         border: settings.fontSize === opt ? "1px solid rgba(123,95,255,0.4)" : "1px solid rgba(255,255,255,0.08)",
                         color: settings.fontSize === opt ? "#7b5fff" : "rgba(255,255,255,0.4)",
                         fontFamily: "JetBrains Mono, monospace",
+                        fontSize: activeMetaFontSize,
                         letterSpacing: "1px",
                       }}>
                       {opt.toUpperCase()}
@@ -383,27 +433,26 @@ export default function ProfilePage() {
 
               {/* Language */}
               <div>
-                <label style={labelStyle}>INTERFACE LANGUAGE</label>
-                <select value={settings.language}
-                  onChange={e => setSettings(s => ({ ...s, language: e.target.value }))}
+                <label style={{ ...labelStyle, fontSize: activeMetaFontSize }}>{t("settings_language").toUpperCase()}</label>
+                <LanguageSelector
+                  value={settings.language}
+                  applyImmediately={false}
+                  onChange={(nextLanguage) => setSettings((s) => ({ ...s, language: nextLanguage }))}
                   className="w-full px-4 py-3 rounded-xl text-white focus:outline-none transition-all mt-1"
-                  style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", fontSize: "14px", fontFamily: "DM Sans, sans-serif", color: "rgba(255,255,255,0.7)" }}>
-                  {["English", "Hindi", "Telugu", "Tamil", "Kannada", "Bengali", "Malayalam"].map(l => (
-                    <option key={l} value={l} style={{ background: "#03060e" }}>{l}</option>
-                  ))}
-                </select>
+                  style={{ background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", fontSize: activeFontSize, fontFamily: "DM Sans, sans-serif", color: "rgba(255,255,255,0.7)" }}
+                />
               </div>
 
               {/* Toggles */}
               {[
-                { key: "notifications", label: "NOTIFICATIONS", desc: "Receive alerts for new document processing" },
-                { key: "autoExport", label: "AUTO EXPORT", desc: "Automatically export chat as PDF after session" },
+                { key: "notifications", label: t("profile_notifications"), desc: t("profile_notifications_desc") },
+                { key: "autoExport", label: t("profile_auto_export"), desc: t("profile_auto_export_desc") },
               ].map(item => (
                 <div key={item.key} className="flex items-center justify-between pb-6"
                   style={{ borderBottom: "1px solid rgba(255,255,255,0.04)" }}>
                   <div>
-                    <label style={{ ...labelStyle, marginBottom: "4px" }}>{item.label}</label>
-                    <p style={{ fontSize: "12px", color: "rgba(255,255,255,0.25)", fontFamily: "DM Sans, sans-serif" }}>
+                    <label style={{ ...labelStyle, marginBottom: "4px", fontSize: activeMetaFontSize }}>{item.label}</label>
+                    <p style={{ fontSize: activeFontSize, color: "rgba(255,255,255,0.25)", fontFamily: "DM Sans, sans-serif" }}>
                       {item.desc}
                     </p>
                   </div>
@@ -430,11 +479,16 @@ export default function ProfilePage() {
                   border: saved ? "1px solid rgba(0,230,118,0.3)" : "1px solid rgba(0,212,255,0.25)",
                   color: saved ? "#00e676" : "#00d4ff",
                   fontFamily: "Orbitron, sans-serif",
-                  fontSize: "13px",
+                  fontSize: activeFontSize,
                   letterSpacing: "2px",
                 }}>
-                {saved ? "SAVED ✓" : "SAVE SETTINGS"}
+                {saved ? `${t("settings_saved_short")} ✓` : t("settings_save")}
               </button>
+              {saved && (
+                <p className="text-center text-sm" style={{ color: "#00e676", fontFamily: "DM Sans, sans-serif" }}>
+                  {t("settings_saved")}
+                </p>
+              )}
             </div>
           </div>
         )}

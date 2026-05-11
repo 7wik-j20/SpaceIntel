@@ -1,7 +1,18 @@
 "use client";
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import axios from "axios";
 import Sidebar from "../components/Sidebar";
+import { useTranslation } from "react-i18next";
+
+const LANGUAGE_NAME_TO_CODE = {
+  English: "en",
+  Hindi: "hi",
+  Telugu: "te",
+  Tamil: "ta",
+  Kannada: "kn",
+  Malayalam: "ml",
+  Bengali: "bn",
+};
 
 function StarField() {
   const canvasRef = useRef(null);
@@ -47,9 +58,23 @@ export default function LibraryPage() {
   const [comparing, setComparing] = useState(false);
   const [compareResult, setCompareResult] = useState(null);
   const [selected, setSelected] = useState([]);
+  const { t } = useTranslation();
 
   const getToken = () => localStorage.getItem("token");
   const authHeader = () => ({ Authorization: `Bearer ${getToken()}` });
+  const getPreferredLanguage = () => {
+    const direct = localStorage.getItem("spaceintel_language");
+    if (direct) return direct;
+
+    try {
+      const rawSettings = localStorage.getItem("spaceintel_settings");
+      if (!rawSettings) return "en";
+      const parsed = JSON.parse(rawSettings);
+      return LANGUAGE_NAME_TO_CODE[parsed?.language] || parsed?.language || "en";
+    } catch {
+      return "en";
+    }
+  };
 
   const openPdf = (filename) => {
     const token = getToken();
@@ -59,25 +84,27 @@ export default function LibraryPage() {
     );
   };
 
-  const fetchDocs = async () => {
+  const fetchDocs = useCallback(async () => {
     try {
-      const res = await axios.get("http://localhost:8000/documents/list", { headers: authHeader() });
+      const token = getToken();
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await axios.get("http://localhost:8000/documents/list", { headers });
       setDocs(res.data);
     } catch { setDocs([]); }
     finally { setLoading(false); }
-  };
+  }, []);
 
-  useEffect(() => { fetchDocs(); }, []);
+  useEffect(() => { fetchDocs(); }, [fetchDocs]);
 
   const handleDelete = async (filename) => {
-    if (!confirm(`Delete ${filename}?`)) return;
+    if (!confirm(`${t("library_delete")} ${filename}?`)) return;
     setDeleting(filename);
     try {
       await axios.delete(`http://localhost:8000/documents/delete/${encodeURIComponent(filename)}`, { headers: authHeader() });
       setDocs((prev) => prev.filter((d) => d.filename !== filename));
       if (summary?.filename === filename) setSummary(null);
       setSelected((prev) => prev.filter((f) => f !== filename));
-    } catch { alert("Delete failed."); }
+    } catch { alert(t("library_delete_failed")); }
     finally { setDeleting(null); }
   };
 
@@ -86,10 +113,13 @@ export default function LibraryPage() {
     try {
       const res = await axios.get(
         `http://localhost:8000/documents/summarize/${encodeURIComponent(filename)}`,
-        { headers: authHeader() }
+        {
+          headers: authHeader(),
+          params: { language: getPreferredLanguage() },
+        }
       );
       setSummary(res.data);
-    } catch { alert("Summarization failed."); }
+    } catch { alert(t("library_summarize_failed")); }
     finally { setSummarizing(null); }
   };
 
@@ -106,11 +136,15 @@ export default function LibraryPage() {
     try {
       const res = await axios.post(
         "http://localhost:8000/documents/compare",
-        { filename1: selected[0], filename2: selected[1] },
+        {
+          filename1: selected[0],
+          filename2: selected[1],
+          language: getPreferredLanguage(),
+        },
         { headers: authHeader() }
       );
       setCompareResult(res.data);
-    } catch { alert("Comparison failed."); }
+    } catch { alert(t("library_compare_failed")); }
     finally { setComparing(false); }
   };
 
@@ -136,7 +170,7 @@ export default function LibraryPage() {
                 </span>
               </div>
               <h2 className="text-2xl font-bold text-white tracking-widest"
-                style={{ fontFamily: "Orbitron, sans-serif" }}>LIBRARY</h2>
+                style={{ fontFamily: "Orbitron, sans-serif" }}>{t("library_title")}</h2>
               <p className="text-sm mt-1" style={{ color: "rgba(255,255,255,0.25)", fontFamily: "DM Sans, sans-serif" }}>
                 All indexed space research documents
               </p>
@@ -148,7 +182,7 @@ export default function LibraryPage() {
                   style={{ background: "rgba(0,212,255,0.06)", border: "1px solid rgba(0,212,255,0.25)", color: "#00d4ff", fontFamily: "JetBrains Mono, monospace" }}
                   onMouseEnter={e => e.currentTarget.style.background = "rgba(0,212,255,0.12)"}
                   onMouseLeave={e => e.currentTarget.style.background = "rgba(0,212,255,0.06)"}>
-                  {comparing ? "ANALYZING..." : "⚡ COMPARE SELECTED"}
+                  {comparing ? `${t("chat_thinking")}` : `⚡ ${t("library_compare")}`}
                 </button>
               )}
               {selected.length > 0 && (
@@ -170,7 +204,7 @@ export default function LibraryPage() {
           {docs.length >= 2 && (
             <div className="mb-4 px-4 py-2.5 rounded-xl text-xs"
               style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)", fontFamily: "JetBrains Mono, monospace", color: "rgba(255,255,255,0.2)" }}>
-              TIP: Click the checkbox icon to select up to 2 documents for comparison
+              {t("library_compare")} (2)
             </div>
           )}
 
@@ -188,8 +222,8 @@ export default function LibraryPage() {
             <div className="rounded-2xl p-16 text-center"
               style={{ background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.06)" }}>
               <div className="text-5xl mb-4" style={{ opacity: 0.1 }}>▦</div>
-              <p className="mb-2" style={{ color: "rgba(255,255,255,0.3)", fontFamily: "DM Sans, sans-serif" }}>No documents indexed yet</p>
-              <p className="text-sm" style={{ color: "rgba(255,255,255,0.15)" }}>Upload a PDF to get started</p>
+              <p className="mb-2" style={{ color: "rgba(255,255,255,0.3)", fontFamily: "DM Sans, sans-serif" }}>{t("library_empty")}</p>
+              <p className="text-sm" style={{ color: "rgba(255,255,255,0.15)" }}>{t("library_upload_hint")}</p>
             </div>
           ) : (
             <div className="space-y-4">
@@ -241,21 +275,21 @@ export default function LibraryPage() {
                         style={{ background: "rgba(0,212,255,0.05)", border: "1px solid rgba(0,212,255,0.15)", color: "#00d4ff", fontFamily: "JetBrains Mono, monospace" }}
                         onMouseEnter={e => e.currentTarget.style.background = "rgba(0,212,255,0.12)"}
                         onMouseLeave={e => e.currentTarget.style.background = "rgba(0,212,255,0.05)"}>
-                        VIEW
+                        {t("chat_sources")}
                       </button>
                       <button onClick={() => handleSummarize(doc.filename)} disabled={summarizing === doc.filename}
                         className="px-3 py-2 rounded-lg text-xs transition-all disabled:opacity-30"
                         style={{ background: "rgba(123,95,255,0.05)", border: "1px solid rgba(123,95,255,0.15)", color: "#7b5fff", fontFamily: "JetBrains Mono, monospace" }}
                         onMouseEnter={e => e.currentTarget.style.background = "rgba(123,95,255,0.12)"}
                         onMouseLeave={e => e.currentTarget.style.background = "rgba(123,95,255,0.05)"}>
-                        {summarizing === doc.filename ? "..." : "SUMMARIZE"}
+                        {summarizing === doc.filename ? "..." : t("library_summarize")}
                       </button>
                       <button onClick={() => handleDelete(doc.filename)} disabled={deleting === doc.filename}
                         className="px-3 py-2 rounded-lg text-xs transition-all disabled:opacity-30"
                         style={{ background: "rgba(255,82,82,0.05)", border: "1px solid rgba(255,82,82,0.15)", color: "#ff5252", fontFamily: "JetBrains Mono, monospace" }}
                         onMouseEnter={e => e.currentTarget.style.background = "rgba(255,82,82,0.12)"}
                         onMouseLeave={e => e.currentTarget.style.background = "rgba(255,82,82,0.05)"}>
-                        {deleting === doc.filename ? "..." : "DELETE"}
+                        {deleting === doc.filename ? "..." : t("library_delete")}
                       </button>
                     </div>
                   </div>

@@ -2,6 +2,7 @@
 import { useState, useRef, useEffect } from "react";
 import axios from "axios";
 import Sidebar from "../components/Sidebar";
+import { useTranslation } from "react-i18next";
 
 function StarField() {
   const canvasRef = useRef(null);
@@ -47,11 +48,12 @@ export default function UploadPage() {
   const [error, setError] = useState(null);
   const [dragging, setDragging] = useState(false);
   const fileInputRef = useRef(null);
+  const { t } = useTranslation();
 
   const getToken = () => localStorage.getItem("token");
 
   const handleFile = (f) => {
-    if (!f || !f.name.endsWith(".pdf")) { setError("Only PDF files are allowed."); return; }
+    if (!f || !f.name.endsWith(".pdf")) { setError(t("upload_pdf_only")); return; }
     setFile(f); setError(null); setResult(null); setStatus(""); setProgress(0);
   };
 
@@ -59,7 +61,7 @@ export default function UploadPage() {
 
   const handleUpload = async () => {
     if (!file) return;
-    setUploading(true); setError(null); setResult(null); setProgress(0); setStatus("Uploading file...");
+    setUploading(true); setError(null); setResult(null); setProgress(0); setStatus(t("upload_uploading"));
     const formData = new FormData();
     formData.append("file", file);
     try {
@@ -71,12 +73,12 @@ export default function UploadPage() {
         onUploadProgress: (e) => {
           const pct = Math.round((e.loaded * 100) / e.total);
           setProgress(pct);
-          setStatus(pct < 100 ? `Uploading... ${pct}%` : "Processing and indexing PDF...");
+          setStatus(pct < 100 ? `${t("upload_uploading")} ${pct}%` : t("upload_processing"));
         },
       });
-      setProgress(100); setStatus("Indexed successfully!"); setResult(res.data);
+      setProgress(100); setStatus(t("upload_success")); setResult(res.data);
     } catch (err) {
-      setError(err.response?.data?.detail || "Upload failed. Please try again.");
+      setError(err.response?.data?.detail || t("upload_error"));
       setStatus("");
     } finally {
       setUploading(false);
@@ -101,13 +103,13 @@ export default function UploadPage() {
               <div className="w-1.5 h-1.5 rounded-full bg-cyan-400"
                 style={{ animation: "pulse 1.5s infinite", boxShadow: "0 0 6px rgba(0,212,255,0.8)" }} />
               <span style={{ fontFamily: "JetBrains Mono, monospace", fontSize: "10px", letterSpacing: "3px", color: "rgba(0,212,255,0.6)" }}>
-                DOCUMENT INDEXING
+                {t("upload_indexing")}
               </span>
             </div>
             <h2 className="text-2xl font-bold text-white tracking-widest mb-2"
-              style={{ fontFamily: "Orbitron, sans-serif" }}>UPLOAD</h2>
+              style={{ fontFamily: "Orbitron, sans-serif" }}>{t("upload_title")}</h2>
             <p className="text-sm" style={{ color: "rgba(255,255,255,0.3)", fontFamily: "DM Sans, sans-serif" }}>
-              Index a space research PDF into SpaceIntel
+              {t("upload_subtitle")}
             </p>
           </div>
 
@@ -128,8 +130,7 @@ export default function UploadPage() {
               {!file ? (
                 <div className="text-center">
                   <div className="text-4xl mb-4" style={{ opacity: 0.2 }}>⬆</div>
-                  <p className="text-sm mb-1" style={{ color: "rgba(255,255,255,0.4)" }}>Drag & drop a PDF here</p>
-                  <p className="text-xs" style={{ color: "rgba(255,255,255,0.2)" }}>or click to browse</p>
+                  <p className="text-sm mb-1" style={{ color: "rgba(255,255,255,0.4)" }}>{t("upload_drag")}</p>
                   <p className="text-xs mt-3" style={{ color: "rgba(255,255,255,0.15)", fontFamily: "JetBrains Mono, monospace" }}>MAX SIZE: 200MB</p>
                 </div>
               ) : (
@@ -143,7 +144,7 @@ export default function UploadPage() {
                       style={{ color: "rgba(255,255,255,0.3)" }}
                       onMouseEnter={e => e.target.style.color = "#ff5252"}
                       onMouseLeave={e => e.target.style.color = "rgba(255,255,255,0.3)"}>
-                      ✕ Remove
+                      ✕ {t("upload_remove")}
                     </button>
                   )}
                 </div>
@@ -163,7 +164,7 @@ export default function UploadPage() {
               </div>
               {progress === 100 && (
                 <p className="text-xs mt-2 text-center" style={{ fontFamily: "JetBrains Mono, monospace", color: "rgba(255,255,255,0.2)" }}>
-                  Indexing may take 1-2 minutes for large PDFs...
+                  {t("upload_wait")}
                 </p>
               )}
             </div>
@@ -182,7 +183,7 @@ export default function UploadPage() {
               style={{ background: "rgba(0,212,255,0.08)", border: "1px solid rgba(0,212,255,0.25)", color: "#00d4ff", fontFamily: "Orbitron, sans-serif" }}
               onMouseEnter={e => e.currentTarget.style.background = "rgba(0,212,255,0.15)"}
               onMouseLeave={e => e.currentTarget.style.background = "rgba(0,212,255,0.08)"}>
-              INDEX DOCUMENT
+              {t("upload_index_document")}
             </button>
           )}
 
@@ -191,7 +192,7 @@ export default function UploadPage() {
               style={{ background: "rgba(0,230,118,0.04)", border: "1px solid rgba(0,230,118,0.2)" }}>
               <div className="flex items-center gap-2 mb-4">
                 <div className="w-2 h-2 rounded-full bg-green-400"></div>
-                <span className="text-green-400 text-sm tracking-wider" style={{ fontFamily: "Orbitron, sans-serif" }}>INDEXED SUCCESSFULLY</span>
+                <span className="text-green-400 text-sm tracking-wider" style={{ fontFamily: "Orbitron, sans-serif" }}>{t("upload_success")}</span>
               </div>
               <p className="text-white text-sm font-medium mb-4 truncate">{result.filename}</p>
               <div className="grid grid-cols-3 gap-3 mb-6">
@@ -213,14 +214,14 @@ export default function UploadPage() {
                   style={{ background: "rgba(0,212,255,0.06)", border: "1px solid rgba(0,212,255,0.2)", color: "#00d4ff", fontFamily: "Orbitron, sans-serif" }}
                   onMouseEnter={e => e.currentTarget.style.background = "rgba(0,212,255,0.12)"}
                   onMouseLeave={e => e.currentTarget.style.background = "rgba(0,212,255,0.06)"}>
-                  UPLOAD ANOTHER
+                  {t("upload_upload_another")}
                 </button>
                 <button onClick={() => window.location.href = "/chat"}
                   className="flex-1 py-3 rounded-xl text-sm tracking-widest transition-all"
                   style={{ background: "rgba(0,230,118,0.06)", border: "1px solid rgba(0,230,118,0.2)", color: "#00e676", fontFamily: "Orbitron, sans-serif" }}
                   onMouseEnter={e => e.currentTarget.style.background = "rgba(0,230,118,0.12)"}
                   onMouseLeave={e => e.currentTarget.style.background = "rgba(0,230,118,0.06)"}>
-                  ASK AI →
+                  {t("upload_ask_ai")} →
                 </button>
               </div>
             </div>

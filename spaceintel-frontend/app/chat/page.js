@@ -2,13 +2,43 @@
 import { useState, useRef, useEffect } from "react";
 import Sidebar from "../components/Sidebar";
 import ReactMarkdown from "react-markdown";
+import { useTranslation } from "react-i18next";
 
 const DEFAULT_SETTINGS = {
-  language: "English",
+  language: "en",
   notifications: true,
   autoExport: false,
   fontSize: "medium",
   responseLength: "balanced",
+};
+
+const FONT_SIZE_MAP = { small: "14px", medium: "16px", large: "18px" };
+const META_FONT_SIZE_MAP = { small: "11px", medium: "12px", large: "13px" };
+const SUBTITLE_FONT_SIZE_MAP = { small: "13px", medium: "14px", large: "15px" };
+const EMPTY_TITLE_FONT_SIZE_MAP = { small: "18px", medium: "20px", large: "22px" };
+const EMPTY_BODY_FONT_SIZE_MAP = { small: "14px", medium: "16px", large: "18px" };
+const LANGUAGE_NAME_TO_CODE = {
+  English: "en",
+  Hindi: "hi",
+  Telugu: "te",
+  Tamil: "ta",
+  Kannada: "kn",
+  Malayalam: "ml",
+  Bengali: "bn",
+};
+
+const getPreferredLanguage = () => {
+  const direct = localStorage.getItem("spaceintel_language");
+  if (direct) return direct;
+
+  try {
+    const rawSettings = localStorage.getItem("spaceintel_settings");
+    if (!rawSettings) return "en";
+    const parsed = JSON.parse(rawSettings);
+    return LANGUAGE_NAME_TO_CODE[parsed?.language] || parsed?.language || "en";
+  } catch {
+    return "en";
+  }
 };
 
 function StarField() {
@@ -46,7 +76,7 @@ function StarField() {
   return <canvas ref={canvasRef} className="fixed inset-0 pointer-events-none" style={{ zIndex: 0 }} />;
 }
 
-function FactCheckPanel({ facts }) {
+function FactCheckPanel({ facts, fontSize, metaFontSize }) {
   const [expanded, setExpanded] = useState(false);
   if (!facts || facts.length === 0) return null;
   const unsupported = facts.filter((f) => !f.supported).length;
@@ -54,7 +84,11 @@ function FactCheckPanel({ facts }) {
     <div className="mt-3">
       <button onClick={() => setExpanded(!expanded)}
         className="flex items-center gap-2 text-xs transition-colors"
-        style={{ fontFamily: "JetBrains Mono, monospace", color: unsupported > 0 ? "#ff5252" : "#00e676" }}>
+        style={{
+          fontFamily: "JetBrains Mono, monospace",
+          color: unsupported > 0 ? "#ff5252" : "#00e676",
+          fontSize: metaFontSize,
+        }}>
         <span>{expanded ? "▼" : "▶"}</span>
         <span className="tracking-widest">
           FACT CHECK · {unsupported > 0 ? `${unsupported} UNVERIFIED` : "ALL VERIFIED"}
@@ -71,7 +105,10 @@ function FactCheckPanel({ facts }) {
               <span style={{ color: fact.supported ? "#00e676" : "#ff5252" }} className="mt-0.5 flex-shrink-0">
                 {fact.supported ? "✓" : "⚠"}
               </span>
-              <p className="text-sm leading-relaxed" style={{ color: fact.supported ? "#a0c0a0" : "#e0a0a0" }}>
+              <p className="text-sm leading-relaxed" style={{
+                color: fact.supported ? "#a0c0a0" : "#e0a0a0",
+                fontSize,
+              }}>
                 {fact.claim}
               </p>
             </div>
@@ -82,7 +119,7 @@ function FactCheckPanel({ facts }) {
   );
 }
 
-function SourcePanel({ sources }) {
+function SourcePanel({ sources, fontSize, metaFontSize }) {
   const [expanded, setExpanded] = useState(false);
   const openPdf = (src) => {
     const token = localStorage.getItem("token");
@@ -95,7 +132,7 @@ function SourcePanel({ sources }) {
     <div className="mt-3">
       <button onClick={() => setExpanded(!expanded)}
         className="flex items-center gap-2 text-xs text-gray-600 hover:text-cyan-400 transition-colors"
-        style={{ fontFamily: "JetBrains Mono, monospace" }}>
+        style={{ fontFamily: "JetBrains Mono, monospace", fontSize: metaFontSize }}>
         <span>{expanded ? "▼" : "▶"}</span>
         <span className="tracking-widest">{sources.length} SOURCE{sources.length > 1 ? "S" : ""}</span>
       </button>
@@ -107,15 +144,16 @@ function SourcePanel({ sources }) {
               onClick={() => openPdf(src)}>
               <div className="flex items-center gap-2 mb-1.5">
                 <span className="text-xs font-bold text-cyan-400"
-                  style={{ fontFamily: "JetBrains Mono, monospace" }}>
+                  style={{ fontFamily: "JetBrains Mono, monospace", fontSize: metaFontSize }}>
                   PAGE {src.page_number}
                 </span>
                 <div className="flex-1 h-px" style={{ background: "rgba(0,212,255,0.1)" }} />
-                <span className="text-xs text-gray-700 group-hover:text-cyan-500 transition-colors">
+                <span className="text-xs text-gray-700 group-hover:text-cyan-500 transition-colors"
+                  style={{ fontSize: metaFontSize }}>
                   OPEN PDF →
                 </span>
               </div>
-              <p className="text-sm text-gray-500 leading-relaxed">{src.text}</p>
+              <p className="text-sm text-gray-500 leading-relaxed" style={{ fontSize }}>{src.text}</p>
             </div>
           ))}
         </div>
@@ -130,9 +168,9 @@ function MessageContent({ content, streaming, fontSize }) {
   return (
     <div className="prose prose-invert prose-sm max-w-none" style={{ color: "#ddeeff", lineHeight: "1.75" }}>
       <ReactMarkdown components={{
-        h1: ({ children }) => <h1 className="text-xl font-bold text-white mt-4 mb-2" style={{ fontFamily: "Orbitron, sans-serif" }}>{children}</h1>,
-        h2: ({ children }) => <h2 className="text-lg font-semibold text-cyan-300 mt-4 mb-2">{children}</h2>,
-        h3: ({ children }) => <h3 className="text-base font-semibold text-cyan-400 mt-3 mb-1">{children}</h3>,
+        h1: ({ children }) => <h1 className="text-xl font-bold text-white mt-4 mb-2" style={{ fontFamily: "Orbitron, sans-serif", fontSize: `calc(${size} + 8px)` }}>{children}</h1>,
+        h2: ({ children }) => <h2 className="text-lg font-semibold text-cyan-300 mt-4 mb-2" style={{ fontSize: `calc(${size} + 4px)` }}>{children}</h2>,
+        h3: ({ children }) => <h3 className="text-base font-semibold text-cyan-400 mt-3 mb-1" style={{ fontSize: `calc(${size} + 2px)` }}>{children}</h3>,
         p: ({ children }) => <p className="mb-3 leading-relaxed text-gray-300" style={{ fontSize: size }}>{children}</p>,
         ul: ({ children }) => <ul className="mb-3 space-y-1 pl-1">{children}</ul>,
         ol: ({ children }) => <ol className="mb-3 space-y-1 pl-4 list-decimal">{children}</ol>,
@@ -146,19 +184,19 @@ function MessageContent({ content, streaming, fontSize }) {
         em: ({ children }) => <em className="text-cyan-200 italic">{children}</em>,
         code: ({ inline, children }) => inline ? (
           <code className="px-1.5 py-0.5 rounded text-cyan-300"
-            style={{ background: "rgba(0,212,255,0.1)", fontFamily: "JetBrains Mono, monospace" }}>
+            style={{ background: "rgba(0,212,255,0.1)", fontFamily: "JetBrains Mono, monospace", fontSize: `calc(${size} - 1px)` }}>
             {children}
           </code>
         ) : (
           <pre className="p-4 rounded-xl overflow-x-auto mb-3"
-            style={{ background: "rgba(0,0,0,0.4)", border: "1px solid rgba(0,212,255,0.1)", fontFamily: "JetBrains Mono, monospace", color: "#00d4ff" }}>
+            style={{ background: "rgba(0,0,0,0.4)", border: "1px solid rgba(0,212,255,0.1)", fontFamily: "JetBrains Mono, monospace", color: "#00d4ff", fontSize: `calc(${size} - 1px)` }}>
             <code>{children}</code>
           </pre>
         ),
         table: ({ children }) => <div className="overflow-x-auto mb-3"><table className="w-full text-sm border-collapse">{children}</table></div>,
-        th: ({ children }) => <th className="px-3 py-2 text-left text-cyan-400 font-semibold text-sm" style={{ background: "rgba(0,212,255,0.08)", border: "1px solid rgba(0,212,255,0.1)", fontFamily: "JetBrains Mono, monospace" }}>{children}</th>,
-        td: ({ children }) => <td className="px-3 py-2 text-gray-300 text-sm" style={{ border: "1px solid rgba(255,255,255,0.05)" }}>{children}</td>,
-        blockquote: ({ children }) => <blockquote className="pl-4 py-1 my-3 text-gray-400 italic text-base" style={{ borderLeft: "3px solid rgba(0,212,255,0.4)" }}>{children}</blockquote>,
+        th: ({ children }) => <th className="px-3 py-2 text-left text-cyan-400 font-semibold text-sm" style={{ background: "rgba(0,212,255,0.08)", border: "1px solid rgba(0,212,255,0.1)", fontFamily: "JetBrains Mono, monospace", fontSize: `calc(${size} - 1px)` }}>{children}</th>,
+        td: ({ children }) => <td className="px-3 py-2 text-gray-300 text-sm" style={{ border: "1px solid rgba(255,255,255,0.05)", fontSize: size }}>{children}</td>,
+        blockquote: ({ children }) => <blockquote className="pl-4 py-1 my-3 text-gray-400 italic text-base" style={{ borderLeft: "3px solid rgba(0,212,255,0.4)", fontSize: `calc(${size} + 1px)` }}>{children}</blockquote>,
       }}>
         {content}
       </ReactMarkdown>
@@ -182,9 +220,13 @@ export default function ChatPage() {
   const bottomRef   = useRef(null);
   const wsRef       = useRef(null);
   const textareaRef = useRef(null);
+  const { t } = useTranslation();
 
-  const fontSizeMap = { small: "14px", medium: "16px", large: "18px" };
-  const activeFontSize = fontSizeMap[userSettings.fontSize] || fontSizeMap.medium;
+  const activeFontSize = FONT_SIZE_MAP[userSettings.fontSize] || FONT_SIZE_MAP.medium;
+  const activeMetaFontSize = META_FONT_SIZE_MAP[userSettings.fontSize] || META_FONT_SIZE_MAP.medium;
+  const activeSubtitleFontSize = SUBTITLE_FONT_SIZE_MAP[userSettings.fontSize] || SUBTITLE_FONT_SIZE_MAP.medium;
+  const activeEmptyTitleFontSize = EMPTY_TITLE_FONT_SIZE_MAP[userSettings.fontSize] || EMPTY_TITLE_FONT_SIZE_MAP.medium;
+  const activeEmptyBodyFontSize = EMPTY_BODY_FONT_SIZE_MAP[userSettings.fontSize] || EMPTY_BODY_FONT_SIZE_MAP.medium;
 
   // On mount: get or create session_id then load its messages
   useEffect(() => {
@@ -255,16 +297,18 @@ export default function ChatPage() {
   useEffect(() => {
     const loadSettings = () => {
       const raw = localStorage.getItem("spaceintel_settings");
+      const fallbackLanguage = localStorage.getItem("spaceintel_language") || "en";
       if (!raw) {
-        setUserSettings(DEFAULT_SETTINGS);
+        setUserSettings({ ...DEFAULT_SETTINGS, language: fallbackLanguage });
         return;
       }
 
       try {
         const parsed = JSON.parse(raw);
-        setUserSettings({ ...DEFAULT_SETTINGS, ...parsed });
+        const normalizedLanguage = LANGUAGE_NAME_TO_CODE[parsed.language] || parsed.language || fallbackLanguage;
+        setUserSettings({ ...DEFAULT_SETTINGS, ...parsed, language: normalizedLanguage });
       } catch {
-        setUserSettings(DEFAULT_SETTINGS);
+        setUserSettings({ ...DEFAULT_SETTINGS, language: fallbackLanguage });
       }
     };
 
@@ -366,11 +410,11 @@ export default function ChatPage() {
         token:      localStorage.getItem("token"),
         session_id: localStorage.getItem("session_id"),
         response_length: userSettings.responseLength,
-        language: userSettings.language,
+        language: getPreferredLanguage(),
       }));
     } else {
       setMessages((prev) => [...prev, {
-        role: "bot", content: "Connection error. Please refresh the page.",
+        role: "bot", content: t("chat_connection_error"),
         streaming: false, sources: [], facts: [],
       }]);
       setLoading(false);
@@ -393,18 +437,28 @@ export default function ChatPage() {
       a.click();
       URL.revokeObjectURL(url);
     } catch {
-      alert("Export failed. Please try again.");
+      alert(t("chat_export_failed"));
     }
   };
 
   const startVoice = () => {
     if (!("webkitSpeechRecognition" in window) && !("SpeechRecognition" in window)) {
-      alert("Voice input not supported in this browser. Use Chrome.");
+      alert(t("chat_voice_unsupported"));
       return;
     }
     const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
     const recognition = new SpeechRecognition();
-    recognition.lang = "en-US";
+    const speechLanguageMap = {
+      en: "en-US",
+      hi: "hi-IN",
+      te: "te-IN",
+      ta: "ta-IN",
+      kn: "kn-IN",
+      ml: "ml-IN",
+      bn: "bn-IN",
+    };
+    const activeLanguage = localStorage.getItem("spaceintel_language") || "en";
+    recognition.lang = speechLanguageMap[activeLanguage] || "en-US";
     recognition.interimResults = false;
     recognition.maxAlternatives = 1;
     recognition.onstart  = () => setListening(true);
@@ -439,9 +493,9 @@ export default function ChatPage() {
           style={{ borderBottom: "1px solid rgba(0,212,255,0.08)" }}>
           <div>
             <h2 className="font-bold text-white tracking-widest text-base"
-              style={{ fontFamily: "Orbitron, sans-serif" }}>ASK AI</h2>
-            <p className="text-sm mt-0.5" style={{ color: "rgba(255,255,255,0.25)" }}>
-              Query your space documents
+              style={{ fontFamily: "Orbitron, sans-serif" }}>{t("chat_title")}</h2>
+            <p className="text-sm mt-0.5" style={{ color: "rgba(255,255,255,0.25)", fontSize: activeSubtitleFontSize }}>
+              {t("chat_subtitle")}
             </p>
           </div>
           <div className="flex items-center gap-2">
@@ -485,11 +539,11 @@ export default function ChatPage() {
           ) : messages.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center px-8">
               <div className="text-5xl mb-6" style={{ opacity: 0.08 }}>◈</div>
-              <h3 className="text-xl font-medium mb-2" style={{ color: "rgba(255,255,255,0.3)" }}>
-                Ready for queries
+              <h3 className="text-xl font-medium mb-2" style={{ color: "rgba(255,255,255,0.3)", fontSize: activeEmptyTitleFontSize }}>
+                {t("chat_ready")}
               </h3>
-              <p className="text-base max-w-sm" style={{ color: "rgba(255,255,255,0.2)" }}>
-                Ask anything about your uploaded space research documents
+              <p className="text-base max-w-sm" style={{ color: "rgba(255,255,255,0.2)", fontSize: activeEmptyBodyFontSize }}>
+                {t("chat_empty")}
               </p>
             </div>
           ) : (
@@ -502,7 +556,7 @@ export default function ChatPage() {
                       <div className="max-w-xl">
                         <div className="flex items-center gap-2 justify-end mb-2">
                           <span className="text-xs text-gray-600"
-                            style={{ fontFamily: "JetBrains Mono, monospace" }}>YOU</span>
+                            style={{ fontFamily: "JetBrains Mono, monospace", fontSize: activeMetaFontSize }}>YOU</span>
                           <div className="w-6 h-6 rounded-md flex items-center justify-center text-xs"
                             style={{ background: "rgba(0,212,255,0.1)", border: "1px solid rgba(0,212,255,0.2)", color: "#00d4ff" }}>
                             U
@@ -519,11 +573,23 @@ export default function ChatPage() {
                           ✦
                         </div>
                         <span className="text-xs text-violet-500"
-                          style={{ fontFamily: "JetBrains Mono, monospace" }}>SPACEINTEL</span>
+                          style={{ fontFamily: "JetBrains Mono, monospace", fontSize: activeMetaFontSize }}>SPACEINTEL</span>
                       </div>
                       <MessageContent content={msg.content} streaming={msg.streaming} fontSize={activeFontSize} />
-                      {!msg.streaming && msg.facts?.length > 0 && <FactCheckPanel facts={msg.facts} />}
-                      {!msg.streaming && msg.sources?.length > 0 && <SourcePanel sources={msg.sources} />}
+                      {!msg.streaming && msg.facts?.length > 0 && (
+                        <FactCheckPanel
+                          facts={msg.facts}
+                          fontSize={activeFontSize}
+                          metaFontSize={activeMetaFontSize}
+                        />
+                      )}
+                      {!msg.streaming && msg.sources?.length > 0 && (
+                        <SourcePanel
+                          sources={msg.sources}
+                          fontSize={activeFontSize}
+                          metaFontSize={activeMetaFontSize}
+                        />
+                      )}
                     </div>
                   )}
                 </div>
@@ -538,7 +604,7 @@ export default function ChatPage() {
                         ✦
                       </div>
                       <span className="text-xs text-violet-500"
-                        style={{ fontFamily: "JetBrains Mono, monospace" }}>SPACEINTEL</span>
+                        style={{ fontFamily: "JetBrains Mono, monospace", fontSize: activeMetaFontSize }}>SPACEINTEL</span>
                     </div>
                     <div className="flex gap-1.5 items-center h-5">
                       {[0, 1, 2].map(i => (
@@ -546,6 +612,9 @@ export default function ChatPage() {
                           style={{ background: "rgba(0,212,255,0.5)", animation: `pulse 1s infinite ${i * 0.2}s` }} />
                       ))}
                     </div>
+                    <p className="text-xs mt-2" style={{ color: "rgba(255,255,255,0.35)", fontSize: activeMetaFontSize }}>
+                      {t("chat_thinking")}
+                    </p>
                   </div>
                 </div>
               )}
@@ -563,7 +632,7 @@ export default function ChatPage() {
               value={input}
               onChange={handleInput}
               onKeyDown={handleKeyDown}
-              placeholder="Ask about space missions, satellites, research... (Enter to send, Shift+Enter for new line)"
+              placeholder={t("chat_placeholder")}
               rows={1}
               className="w-full resize-none rounded-2xl px-5 py-4 pr-28 text-base text-white placeholder-gray-700 focus:outline-none transition-all"
               style={{
@@ -579,6 +648,7 @@ export default function ChatPage() {
             <div className="absolute right-3 bottom-3 flex gap-2">
               <button onClick={startVoice} disabled={loading || listening}
                 className="w-10 h-10 rounded-xl flex items-center justify-center text-base transition-all disabled:opacity-20"
+                title={t("chat_send")}
                 style={{
                   background: listening ? "rgba(255,82,82,0.15)" : "rgba(0,212,255,0.05)",
                   border: `1px solid ${listening ? "rgba(255,82,82,0.4)" : "rgba(0,212,255,0.2)"}`,
@@ -588,6 +658,7 @@ export default function ChatPage() {
               </button>
               <button onClick={sendMessage} disabled={loading || !input.trim()}
                 className="w-10 h-10 rounded-xl flex items-center justify-center text-lg transition-all disabled:opacity-20"
+                title={t("chat_send")}
                 style={{
                   background: input.trim() ? "rgba(0,212,255,0.15)" : "rgba(0,212,255,0.05)",
                   border: "1px solid rgba(0,212,255,0.2)",
@@ -595,8 +666,8 @@ export default function ChatPage() {
                 }}>↑</button>
             </div>
           </div>
-          <p className="text-center text-sm mt-2" style={{ color: "rgba(255,255,255,0.15)" }}>
-            SpaceIntel answers from your uploaded documents only
+          <p className="text-center text-sm mt-2" style={{ color: "rgba(255,255,255,0.15)", fontSize: activeMetaFontSize }}>
+            {t("chat_doc_only")}
           </p>
         </div>
 

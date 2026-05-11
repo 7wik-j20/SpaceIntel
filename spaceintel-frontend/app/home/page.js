@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import Sidebar from "../components/Sidebar";
+import { useTranslation } from "react-i18next";
 
 function StarField() {
   const canvasRef = useRef(null);
@@ -143,11 +144,11 @@ const cards = [
   {
     href: "/upload",
     Icon: RocketIcon,
-    label: "ORBITAL UPLOAD",
-    sublabel: "DOCUMENT INDEXING",
-    title: "Upload",
-    desc: "Launch NASA, ISRO, ESA mission reports into orbit. Index research PDFs into your personal knowledge base.",
-    cta: "LAUNCH SEQUENCE",
+    labelKey: "home_card_upload_label",
+    sublabelKey: "home_card_upload_sublabel",
+    titleKey: "upload_title",
+    descKey: "home_card_upload_desc",
+    ctaKey: "home_card_upload_cta",
     color: "#00d4ff",
     glow: "rgba(0,212,255,0.07)",
     border: "rgba(0,212,255,0.3)",
@@ -157,11 +158,11 @@ const cards = [
   {
     href: "/chat",
     Icon: PulsarIcon,
-    label: "NEURAL QUERY",
-    sublabel: "AI INTELLIGENCE",
-    title: "Ask AI",
-    desc: "Transmit queries to the neural core. Receive grounded answers with verified source citations.",
-    cta: "INITIATE QUERY",
+    labelKey: "home_card_chat_label",
+    sublabelKey: "home_card_chat_sublabel",
+    titleKey: "chat_title",
+    descKey: "home_card_chat_desc",
+    ctaKey: "home_card_chat_cta",
     color: "#7b5fff",
     glow: "rgba(123,95,255,0.07)",
     border: "rgba(123,95,255,0.3)",
@@ -171,11 +172,11 @@ const cards = [
   {
     href: "/library",
     Icon: OrbitIcon,
-    label: "STELLAR ARCHIVE",
-    sublabel: "DOCUMENT REGISTRY",
-    title: "Library",
-    desc: "Navigate the stellar archive. Browse, summarize, and compare indexed space research documents.",
-    cta: "ENTER ARCHIVE",
+    labelKey: "home_card_library_label",
+    sublabelKey: "home_card_library_sublabel",
+    titleKey: "library_title",
+    descKey: "home_card_library_desc",
+    ctaKey: "home_card_library_cta",
     color: "#00e676",
     glow: "rgba(0,230,118,0.07)",
     border: "rgba(0,230,118,0.3)",
@@ -187,6 +188,7 @@ const cards = [
 export default function HomePage() {
   const router = useRouter();
   const [hovered, setHovered] = useState(null);
+  const { t } = useTranslation();
 
   // Collapsed = 80px, Expanded fills remaining space
   const COLLAPSED_W = 80;
@@ -221,7 +223,7 @@ export default function HomePage() {
                 fontSize: "9px",
                 letterSpacing: "3px",
                 color: "rgba(0,212,255,0.55)",
-              }}>MISSION CONTROL · ACTIVE</span>
+              }}>{t("home_status_active")}</span>
             </div>
             <h1 style={{
               fontFamily: "Orbitron, sans-serif",
@@ -230,7 +232,7 @@ export default function HomePage() {
               letterSpacing: "0.12em",
               color: "#ffffff",
               textShadow: "0 0 40px rgba(0,212,255,0.12)",
-            }}>SPACEINTEL</h1>
+            }}>{t("app_name").toUpperCase()}</h1>
           </div>
           <div style={{
             display: "flex",
@@ -252,7 +254,7 @@ export default function HomePage() {
               fontSize: "9px",
               letterSpacing: "2px",
               color: "rgba(255,255,255,0.28)",
-            }}>llama-3.3-70b · ONLINE</span>
+            }}>{`llama-3.3-70b · ${t("home_online")}`}</span>
           </div>
         </div>
 
@@ -263,7 +265,7 @@ export default function HomePage() {
             fontSize: "9px",
             letterSpacing: "4px",
             color: "rgba(255,255,255,0.18)",
-          }}>SELECT MODULE · HOVER TO EXPAND</span>
+          }}>{t("home_select_module")}</span>
         </div>
 
         {/* ── EXPANDABLE CARDS ── */}
@@ -386,7 +388,7 @@ export default function HomePage() {
                     textOrientation: "mixed",
                     transform: "rotate(180deg)",
                     whiteSpace: "nowrap",
-                  }}>{card.label}</div>
+                    }}>{t(card.labelKey)}</div>
                 </div>
 
                 {/* ── EXPANDED STATE ── */}
@@ -417,14 +419,14 @@ export default function HomePage() {
                         color: card.color,
                         opacity: 0.55,
                         marginBottom: "4px",
-                      }}>{card.sublabel}</div>
+                      }}>{t(card.sublabelKey)}</div>
                       <div style={{
                         fontFamily: "Orbitron, sans-serif",
                         fontSize: "10px",
                         fontWeight: 700,
                         letterSpacing: "2px",
                         color: card.color,
-                      }}>{card.label}</div>
+                      }}>{t(card.labelKey)}</div>
                     </div>
                   </div>
 
@@ -445,7 +447,7 @@ export default function HomePage() {
                     marginBottom: "16px",
                     lineHeight: 1.1,
                     whiteSpace: "nowrap",
-                  }}>{card.title}</div>
+                  }}>{t(card.titleKey)}</div>
 
                   {/* Description */}
                   <p style={{
@@ -455,7 +457,7 @@ export default function HomePage() {
                     lineHeight: "1.8",
                     flex: 1,
                     maxWidth: "320px",
-                  }}>{card.desc}</p>
+                  }}>{t(card.descKey)}</p>
 
                   {/* CTA */}
                   <div style={{
@@ -474,7 +476,7 @@ export default function HomePage() {
                       fontSize: "9px",
                       letterSpacing: "2.5px",
                       color: card.color,
-                    }}>{card.cta}</span>
+                    }}>{t(card.ctaKey)}</span>
                     <span style={{
                       fontFamily: "JetBrains Mono, monospace",
                       fontSize: "11px",
@@ -507,7 +509,7 @@ export default function HomePage() {
             letterSpacing: "3px",
             color: "rgba(255,255,255,0.09)",
           }}>
-            SPACEINTEL · AI KNOWLEDGE ASSISTANT FOR SPACE RESEARCH · © 2025
+            {`${t("app_name").toUpperCase()} · ${t("tagline").toUpperCase()} · © 2025`}
           </p>
         </div>
 

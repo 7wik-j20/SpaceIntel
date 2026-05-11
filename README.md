@@ -45,42 +45,53 @@ Result:
 
 ### 3. Chat Question Answering
 
-SpaceIntel chat uses a streaming WebSocket endpoint.
+SpaceIntel chat uses a streaming WebSocket endpoint for real-time interaction.
 
 Per-question runtime behavior:
 
 1. User sends question + token + session_id + settings (response length, language).
-2. Backend enforces rate limiting.
-3. Non-space-topic questions are rejected by a topic guard.
-4. Existing cache is checked for quick reuse.
-5. Query is classified (Simple, Complex, Comparison, Summary) to choose strategy.
-6. Retrieval runs with hybrid search (dense vector + BM25 lexical).
-7. Results are reranked with Cohere.
-8. LLM response is generated and streamed token-by-token.
-9. Session memory is updated in Redis and PostgreSQL.
-10. Claims are fact-checked against retrieved chunks.
-11. Client receives final payload: answer, sources, fact-check results, session_id.
+2. Topic validation: Non-space-topic questions are rejected by a topic guard to keep responses focused on space research.
+3. Rate limiting: Backend enforces request rate limits to prevent abuse.
+4. Cache lookup: Existing cache is checked for quick reuse of similar questions.
+5. Query classification: Question is routed through an AI agent that classifies it as Simple, Complex, Comparison, or Summary type.
+6. Hybrid retrieval: Runs dual search using dense vector embeddings + BM25 lexical matching across indexed documents.
+7. Reranking: Results are reranked using Cohere to improve relevance.
+8. LLM generation: Response is generated using Groq-hosted LLM and streamed token-by-token to client.
+9. Session memory: Latest turns are cached in Redis and persisted in PostgreSQL for context.
+10. Fact-checking: Generated claims are automatically extracted and verified against retrieved chunks.
+11. Client delivery: Final payload includes answer, sources, fact-check results, session_id.
 
-### 4. Source Transparency
+### 4. Query Classification and Routing (Agent System)
+
+The query classification system intelligently routes questions to the most appropriate handling strategy:
+
+- **Simple queries**: Direct factual questions answered from document context (e.g., "What is the ISS altitude?")
+- **Complex queries**: Multi-step reasoning questions requiring synthesis from multiple documents
+- **Comparison queries**: Questions asking to compare two or more documents or concepts
+- **Summary queries**: Requests to summarize document content or key findings
+
+The agent evaluates each question and selects the optimal retrieval and generation parameters, improving both speed and answer quality.
+
+### 5. Source Transparency
 
 - Each answer can show supporting sources.
 - Source entries include filename, page number, and a snippet preview.
 - Clicking a source opens the PDF directly to the cited page.
 
-### 5. Fact-Check Layer
+### 6. Fact-Check Layer
 
 - The app extracts factual claims from generated output.
 - Each claim is evaluated against retrieved context.
 - UI displays claim verdicts (supported or unsupported) for transparency.
 
-### 6. Session Memory And History
+### 7. Session Memory And History
 
 - Chat sessions are identified by session_id.
-- Latest turns are cached for fast context retrieval.
+- Latest turns are cached in Redis for fast context retrieval.
 - History is persisted in PostgreSQL for long-term access.
 - Users can list sessions, open prior sessions, rename, pin, and delete sessions.
 
-### 7. Library Actions
+### 8. Library Actions
 
 The library supports:
 
@@ -90,7 +101,66 @@ The library supports:
 - Compare two documents.
 - Delete a document.
 
-### 8. Profile And Settings
+### 9. Multi-Language Support
+
+SpaceIntel supports 7 languages for both document processing and responses:
+
+- **English** (en)
+- **Hindi** (hi) - Devanagari script
+- **Telugu** (te)
+- **Tamil** (ta)
+- **Kannada** (kn)
+- **Bengali** (bn)
+- **Malayalam** (ml)
+
+Features:
+- Users can set language preference in profile settings.
+- Responses are generated and streamed in the user's preferred language.
+- Topic guardrail messages are localized for each language.
+- Document summaries and comparisons respect language preferences.
+
+### 10. News Feed And Translation
+
+The News page provides real-time space news updates:
+
+- **Automatic polling**: News feed polls external APIs for latest space missions, satellite launches, and aerospace discoveries.
+- **News translation**: News articles can be translated to any of the 7 supported languages for global accessibility.
+- **Watchlist**: Users can save interesting articles to a personal watchlist for later reading.
+- **Content preservation**: News translation preserves mission names, acronyms, and technical entities while providing fluent translations.
+
+### 11. Report Generation And Export
+
+Chat conversations can be exported as professional PDF reports:
+
+- **Export endpoint**: Users can export a conversation session as a formatted PDF.
+- **Report contents**: Includes full Q&A pairs, sources, fact-check results, and timestamps.
+- **Formatting**: Reports are generated with proper styling and pagination.
+- **Download ready**: Users can download reports for archival, sharing, or offline reference.
+
+### 12. Performance Optimization Features
+
+**Caching Layer**:
+- Frequently asked questions and their responses are cached in Redis.
+- Cache lookups prevent redundant LLM API calls and improve response latency.
+- Cache is user-scoped to maintain privacy and relevance.
+
+**Rate Limiting**:
+- Per-user rate limits prevent abuse and ensure fair resource allocation.
+- Rate limits are enforced at the WebSocket question endpoint.
+- Users are informed of rate limit status via API responses.
+
+**Query Rewriting**:
+- Incoming questions are augmented with query variants to improve retrieval recall.
+- Multiple query versions are generated (original, context-enhanced, keyword-focused).
+- Each variant is searched independently, and results are combined for better coverage.
+- Helps find relevant documents that might be missed with a single query formulation.
+
+**Hybrid Search**:
+- Combines dense vector embeddings (semantic understanding) with BM25 lexical matching (keyword relevance).
+- Dual matching improves recall for both semantic and keyword-based queries.
+- Results are fused and reranked for optimal relevance.
+
+### 13. Profile And Settings
 
 Profile section includes:
 
@@ -139,15 +209,19 @@ Documents:
 - `POST /documents/upload`
 - `GET /documents/list`
 - `DELETE /documents/delete/{filename}`
-- `GET /documents/summarize/{filename}`
-- `POST /documents/compare`
+- `GET /documents/summarize/{filename}` (with optional language parameter)
+- `POST /documents/compare` (compare two documents with language support)
 - `GET /documents/pdf/{filename}`
-- `POST /documents/export-report`
+- `POST /documents/export-report` (export chat session as PDF)
 
 Query:
 
 - `POST /query/ask` (HTTP)
-- `WS /ws/ask` (streaming chat)
+- `WS /ws/ask` (streaming chat with rate limiting and caching)
+
+News:
+
+- `POST /query/news/translate` (translate news articles to supported languages)
 
 History:
 

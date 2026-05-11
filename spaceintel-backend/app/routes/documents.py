@@ -129,7 +129,11 @@ def delete_document(filename: str, current_user: dict = Depends(get_current_user
 
 # ── SUMMARIZE ──
 @router.get("/summarize/{filename}")
-def summarize_doc(filename: str, current_user: dict = Depends(get_current_user)):
+def summarize_doc(
+    filename: str,
+    language: str = Query(default="en"),
+    current_user: dict = Depends(get_current_user)
+):
     user_id = current_user["id"]
     manifest = load_manifest()
     entry = next(
@@ -138,17 +142,18 @@ def summarize_doc(filename: str, current_user: dict = Depends(get_current_user))
     )
     if not entry:
         raise HTTPException(status_code=404, detail="Document not found")
-    return summarize_document(filename, user_id=user_id)
+    return summarize_document(filename, user_id=user_id, language=language)
 
 # ── COMPARE ──
 class CompareRequest(BaseModel):
     filename1: str
     filename2: str
+    language: str = "en"
 
 @router.post("/compare")
 def compare_docs(req: CompareRequest, current_user: dict = Depends(get_current_user)):
     user_id = current_user["id"]
-    return compare_documents(req.filename1, req.filename2, user_id=user_id)
+    return compare_documents(req.filename1, req.filename2, user_id=user_id, language=req.language)
 
 # ── SERVE PDF ──
 @router.get("/pdf/{filename}")

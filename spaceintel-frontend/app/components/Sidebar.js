@@ -1,14 +1,17 @@
 'use client';
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
+import { useTranslation } from 'react-i18next';
 
 export default function Sidebar({ layout = 'futuristic' }) {
   const [sessions, setSessions]       = useState([]);
   const [activeSession, setActiveSession] = useState(null);
+  const [selectedSessions, setSelectedSessions] = useState([]);
   const [hoveredSession, setHoveredSession] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [renamingSession, setRenamingSession] = useState(null);
   const [pinningSession, setPinningSession] = useState(null);
+  const [deletingSessions, setDeletingSessions] = useState(false);
   const [isLoggedIn, setIsLoggedIn]   = useState(false);
   const [networkStatus, setNetworkStatus] = useState(
     typeof navigator !== 'undefined' && !navigator.onLine ? 'offline' : 'strong'
@@ -16,23 +19,7 @@ export default function Sidebar({ layout = 'futuristic' }) {
   const router = useRouter();
   const pathname = usePathname();
   const isProfileAligned = layout === 'profile';
-
-  useEffect(() => {
-    const token = localStorage.getItem('token');
-    if (token) {
-      setIsLoggedIn(true);
-      fetchSessions();
-    }
-    const current = localStorage.getItem('session_id');
-    if (current) setActiveSession(current);
-  }, []);
-
-  // Listen for new messages so sidebar refreshes after first message in a new chat
-  useEffect(() => {
-    const handler = () => fetchSessions();
-    window.addEventListener('spaceintel:session-updated', handler);
-    return () => window.removeEventListener('spaceintel:session-updated', handler);
-  }, []);
+  const { t } = useTranslation();
 
   const fetchSessions = useCallback(async () => {
     try {
@@ -68,6 +55,23 @@ export default function Sidebar({ layout = 'futuristic' }) {
       console.error('Failed to load sessions', err);
     }
   }, []);
+
+  useEffect(() => {
+    const token = localStorage.getItem('token');
+    if (token) {
+      setIsLoggedIn(true);
+      fetchSessions();
+    }
+    const current = localStorage.getItem('session_id');
+    if (current) setActiveSession(current);
+  }, [fetchSessions]);
+
+  // Listen for new messages so sidebar refreshes after first message in a new chat
+  useEffect(() => {
+    const handler = () => fetchSessions();
+    window.addEventListener('spaceintel:session-updated', handler);
+    return () => window.removeEventListener('spaceintel:session-updated', handler);
+  }, [fetchSessions]);
 
   useEffect(() => {
     const resolveNetworkStatus = () => {
@@ -156,8 +160,54 @@ export default function Sidebar({ layout = 'futuristic' }) {
     router.push('/chat');
   }
 
+  function toggleSelectSession(sessionId) {
+    setSelectedSessions(prev =>
+      prev.includes(sessionId)
+        ? prev.filter(id => id !== sessionId)
+        : [...prev, sessionId]
+    );
+  }
+
+  async function deleteSelectedChats() {
+    if (selectedSessions.length === 0 || deletingSessions) return;
+    const confirmed = window.confirm(`Delete ${selectedSessions.length} selected chat(s)?`);
+    if (!confirmed) return;
+
+    try {
+      const token = localStorage.getItem('token');
+      if (!token) return;
+
+      setDeletingSessions(true);
+      const idsToDelete = [...selectedSessions];
+
+      await Promise.all(
+        idsToDelete.map((sessionId) =>
+          fetch(`http://localhost:8000/history/sessions/${sessionId}`, {
+            method: 'DELETE',
+            headers: { Authorization: `Bearer ${token}` },
+          })
+        )
+      );
+
+      setSessions((prev) => prev.filter((s) => !idsToDelete.includes(s.session_id)));
+      setSelectedSessions([]);
+
+      if (activeSession && idsToDelete.includes(activeSession)) {
+        const id = crypto.randomUUID();
+        localStorage.setItem('session_id', id);
+        setActiveSession(id);
+        window.dispatchEvent(new CustomEvent('spaceintel:load-session', { detail: { sessionId: id } }));
+      }
+    } catch (err) {
+      console.error('Failed to delete selected chats', err);
+    } finally {
+      setDeletingSessions(false);
+      fetchSessions();
+    }
+  }
+
   async function renameChat(session) {
-    const newTitle = window.prompt('Rename chat', session.title || 'Untitled Chat');
+    const newTitle = window.prompt(t('nav_rename'), session.title || 'Untitled Chat');
     if (newTitle === null) return;
     const title = newTitle.trim();
     if (!title) return;
@@ -217,12 +267,17 @@ export default function Sidebar({ layout = 'futuristic' }) {
   const filteredSessions = sessions.filter((s) =>
     (s.title || 'Untitled Chat').toLowerCase().includes(searchTerm.toLowerCase())
   );
+
+  useEffect(() => {
+    const validIds = new Set(sessions.map((s) => s.session_id));
+    setSelectedSessions((prev) => prev.filter((id) => validIds.has(id)));
+  }, [sessions]);
   const middleNavItems = [
-    { label: 'News',      icon: '✦', path: '/news'    },
-    { label: 'Documents', icon: '⊞', path: '/library' },
-    { label: 'Upload',    icon: '↑', path: '/upload'  },
+    { label: t('nav_news'), icon: '✦', path: '/news' },
+    { label: t('nav_library'), icon: '⊞', path: '/library' },
+    { label: t('nav_upload'), icon: '↑', path: '/upload' },
   ];
-  const profileNavItem = { label: 'Profile', icon: '◯', path: '/profile' };
+  const profileNavItem = { label: t('nav_profile'), icon: '◯', path: '/profile' };
 
   return (
     <div style={{
@@ -304,11 +359,11 @@ export default function Sidebar({ layout = 'futuristic' }) {
             fontSize: '15px', fontWeight: '700', color: '#00d4ff',
             letterSpacing: '3px', fontFamily: 'Orbitron, sans-serif',
           }}>
-            SPACEINTEL
+            {t('app_name').toUpperCase()}
           </span>
         </div>
         <div
-          title="Network status"
+          title={t('nav_settings')}
           style={{
             width: '8px',
             height: '8px',
@@ -367,7 +422,7 @@ export default function Sidebar({ layout = 'futuristic' }) {
             lineHeight: 1,
             flexShrink: 0,
           }}>+</span>
-          <span style={{ flex: 1, textAlign: 'left' }}>New chat</span>
+          <span style={{ flex: 1, textAlign: 'left' }}>{t('nav_new_chat')}</span>
           <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.45)' }}>⌘K</span>
         </button>
       </div>
@@ -383,7 +438,7 @@ export default function Sidebar({ layout = 'futuristic' }) {
             <input
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
-              placeholder="Search chats"
+              placeholder={t('nav_search')}
               style={{
                 width: '100%',
                 padding: '8px 10px',
@@ -399,13 +454,68 @@ export default function Sidebar({ layout = 'futuristic' }) {
           </div>
         )}
 
+        {isLoggedIn && selectedSessions.length > 0 && (
+          <div
+            style={{
+              marginBottom: '8px',
+              padding: '8px 10px',
+              borderRadius: '10px',
+              border: '1px solid rgba(255,82,82,0.22)',
+              background: 'rgba(255,82,82,0.06)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              gap: '8px',
+            }}
+          >
+            <span style={{ fontSize: '11px', color: 'rgba(255,255,255,0.78)', fontFamily: 'JetBrains Mono, monospace' }}>
+              {selectedSessions.length} SELECTED
+            </span>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <div
+                role="button"
+                onClick={() => setSelectedSessions([])}
+                style={{
+                  border: '1px solid rgba(255,255,255,0.18)',
+                  borderRadius: '6px',
+                  background: 'rgba(255,255,255,0.06)',
+                  color: 'rgba(255,255,255,0.86)',
+                  padding: '2px 6px',
+                  fontSize: '10px',
+                  cursor: 'pointer',
+                  userSelect: 'none',
+                }}
+              >
+                CLEAR
+              </div>
+              <div
+                role="button"
+                onClick={deleteSelectedChats}
+                style={{
+                  border: '1px solid rgba(255,82,82,0.35)',
+                  borderRadius: '6px',
+                  background: 'rgba(255,82,82,0.12)',
+                  color: '#ff8a8a',
+                  padding: '2px 6px',
+                  fontSize: '10px',
+                  cursor: deletingSessions ? 'not-allowed' : 'pointer',
+                  userSelect: 'none',
+                  opacity: deletingSessions ? 0.5 : 1,
+                }}
+              >
+                {deletingSessions ? '...' : 'DELETE'}
+              </div>
+            </div>
+          </div>
+        )}
+
         {!isLoggedIn ? (
           <div style={{
             padding: '24px 12px', textAlign: 'center',
             color: 'rgba(255,255,255,0.2)', fontSize: '12px',
             lineHeight: '1.6',
           }}>
-            Log in to see your chat history
+            {t('login_title')} {t('nav_chat')}
           </div>
         ) : !hasAnySessions ? (
           <div style={{
@@ -413,7 +523,7 @@ export default function Sidebar({ layout = 'futuristic' }) {
             color: 'rgba(255,255,255,0.2)', fontSize: '12px',
             lineHeight: '1.6',
           }}>
-            No conversations yet.<br />Start a new chat above.
+            {t('nav_no_history')}
           </div>
         ) : filteredSessions.length === 0 ? (
           <div style={{
@@ -421,11 +531,12 @@ export default function Sidebar({ layout = 'futuristic' }) {
             color: 'rgba(255,255,255,0.26)', fontSize: '12px',
             lineHeight: '1.6',
           }}>
-            No chats match your search.
+            {t('nav_no_search_results')}
           </div>
         ) : (
           filteredSessions.map(s => {
             const isActive  = activeSession === s.session_id;
+            const isSelected = selectedSessions.includes(s.session_id);
             const isHovered = hoveredSession === s.session_id;
             return (
               <div
@@ -466,13 +577,29 @@ export default function Sidebar({ layout = 'futuristic' }) {
                 }}
                 title={s.title || 'Untitled Chat'}
               >
-                <span style={{
-                  width: '6px',
-                  height: '6px',
-                  borderRadius: '50%',
-                  background: isActive ? '#00d4ff' : 'rgba(255,255,255,0.22)',
-                  flexShrink: 0,
-                }} />
+                <div
+                  role="button"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    toggleSelectSession(s.session_id);
+                  }}
+                  style={{
+                    width: '20px',
+                    height: '20px',
+                    borderRadius: '6px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    flexShrink: 0,
+                    userSelect: 'none',
+                    fontSize: '11px',
+                    color: isSelected ? '#00d4ff' : 'rgba(255,255,255,0.38)',
+                    background: isSelected ? 'rgba(0,212,255,0.15)' : 'rgba(255,255,255,0.04)',
+                    border: isSelected ? '1px solid rgba(0,212,255,0.4)' : '1px solid rgba(255,255,255,0.12)',
+                  }}
+                >
+                  {isSelected ? '✓' : '◻'}
+                </div>
                 <span style={{
                   flex: 1,
                   overflow: 'hidden',
@@ -488,7 +615,7 @@ export default function Sidebar({ layout = 'futuristic' }) {
                       togglePin(s);
                     }}
                     disabled={pinningSession === s.session_id}
-                    title={s.pinned ? 'Unpin chat' : 'Pin chat'}
+                    title={s.pinned ? t('nav_unpin') : t('nav_pin')}
                     style={{
                       border: '1px solid rgba(255,255,255,0.15)',
                       borderRadius: '6px',
@@ -499,7 +626,7 @@ export default function Sidebar({ layout = 'futuristic' }) {
                       cursor: 'pointer',
                     }}
                   >
-                    {pinningSession === s.session_id ? '…' : (s.pinned ? 'UNPIN' : 'PIN')}
+                    {pinningSession === s.session_id ? '…' : (s.pinned ? t('nav_unpin').toUpperCase() : t('nav_pin').toUpperCase())}
                   </button>
                   <button
                     onClick={(e) => {
@@ -507,7 +634,7 @@ export default function Sidebar({ layout = 'futuristic' }) {
                       renameChat(s);
                     }}
                     disabled={renamingSession === s.session_id}
-                    title="Rename chat"
+                    title={t('nav_rename')}
                     style={{
                       border: '1px solid rgba(255,255,255,0.15)',
                       borderRadius: '6px',
@@ -518,7 +645,7 @@ export default function Sidebar({ layout = 'futuristic' }) {
                       cursor: 'pointer',
                     }}
                   >
-                    {renamingSession === s.session_id ? '…' : 'RENAME'}
+                    {renamingSession === s.session_id ? '…' : t('nav_rename').toUpperCase()}
                   </button>
                   <span style={{
                     fontSize: '11px',

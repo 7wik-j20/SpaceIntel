@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { useTranslation } from "react-i18next";
 
 export default function RegisterPage() {
   const [name, setName] = useState("");
@@ -10,16 +11,17 @@ export default function RegisterPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
+  const { t } = useTranslation();
 
   const handleRegister = async (e) => {
     e.preventDefault();
     setError("");
     if (password !== confirmPassword) {
-      setError("Passwords do not match.");
+      setError(t("register_password_mismatch"));
       return;
     }
     if (password.length < 6) {
-      setError("Password must be at least 6 characters.");
+      setError(t("register_password_min"));
       return;
     }
     setLoading(true);
@@ -30,10 +32,10 @@ export default function RegisterPage() {
         body: JSON.stringify({ username: name, email, password }),
       });
       const data = await res.json();
-      if (!res.ok) throw new Error(data.detail || "Registration failed");
+      if (!res.ok) throw new Error(data.detail || t("error_something_wrong"));
       router.push("/login");
     } catch (err) {
-      setError(err.message);
+      setError(err.message || t("error_something_wrong"));
     } finally {
       setLoading(false);
     }
@@ -86,14 +88,14 @@ export default function RegisterPage() {
               letterSpacing: "0.15em",
               color: "#ffffff",
               marginBottom: "8px",
-            }}>SPACEINTEL</h1>
+            }}>{t("app_name")}</h1>
           </span>
           <p style={{
             fontFamily: "JetBrains Mono, monospace",
             fontSize: "10px",
             letterSpacing: "3px",
             color: "rgba(255,255,255,0.3)",
-          }}>CREATE YOUR ACCOUNT</p>
+          }}>{t("register_title")}</p>
         </div>
 
         <div style={{
@@ -107,7 +109,7 @@ export default function RegisterPage() {
 
             {/* Name */}
             <div className="mb-5">
-              <label style={labelStyle}>NAME</label>
+              <label style={labelStyle}>{t("register_name")}</label>
               <input type="text" value={name} onChange={e => setName(e.target.value)} required
                 className="w-full px-4 py-3 rounded-xl text-white focus:outline-none transition-all"
                 style={inputStyle}
@@ -117,7 +119,7 @@ export default function RegisterPage() {
 
             {/* Email */}
             <div className="mb-5">
-              <label style={labelStyle}>EMAIL</label>
+              <label style={labelStyle}>{t("register_email")}</label>
               <input type="email" value={email} onChange={e => setEmail(e.target.value)} required
                 className="w-full px-4 py-3 rounded-xl text-white focus:outline-none transition-all"
                 style={inputStyle}
@@ -127,7 +129,7 @@ export default function RegisterPage() {
 
             {/* Password */}
             <div className="mb-5">
-              <label style={labelStyle}>PASSWORD</label>
+              <label style={labelStyle}>{t("register_password")}</label>
               <input type="password" value={password} onChange={e => setPassword(e.target.value)} required
                 className="w-full px-4 py-3 rounded-xl text-white focus:outline-none transition-all"
                 style={inputStyle}
@@ -137,7 +139,7 @@ export default function RegisterPage() {
 
             {/* Confirm Password */}
             <div className="mb-8">
-              <label style={labelStyle}>CONFIRM PASSWORD</label>
+              <label style={labelStyle}>{t("register_confirm_password")}</label>
               <input type="password" value={confirmPassword} onChange={e => setConfirmPassword(e.target.value)} required
                 className="w-full px-4 py-3 rounded-xl text-white focus:outline-none transition-all"
                 style={{
@@ -160,12 +162,12 @@ export default function RegisterPage() {
                 }} />
               {confirmPassword && password !== confirmPassword && (
                 <p className="mt-1 text-xs" style={{ color: "#ff5252", fontFamily: "JetBrains Mono, monospace" }}>
-                  Passwords do not match
+                  {t("register_password_mismatch")}
                 </p>
               )}
               {confirmPassword && password === confirmPassword && (
                 <p className="mt-1 text-xs" style={{ color: "#00e676", fontFamily: "JetBrains Mono, monospace" }}>
-                  Passwords match ✓
+                  {t("register_password_match")} ✓
                 </p>
               )}
             </div>
@@ -189,7 +191,7 @@ export default function RegisterPage() {
               }}
               onMouseEnter={e => e.currentTarget.style.background = "linear-gradient(135deg, rgba(0,212,255,0.25), rgba(123,95,255,0.25))"}
               onMouseLeave={e => e.currentTarget.style.background = "linear-gradient(135deg, rgba(0,212,255,0.15), rgba(123,95,255,0.15))"}>
-              {loading ? "CREATING ACCOUNT..." : "REGISTER"}
+              {loading ? t("register_creating") : t("register_button")}
             </button>
           </form>
 
@@ -199,10 +201,10 @@ export default function RegisterPage() {
             letterSpacing: "1px",
             color: "rgba(255,255,255,0.25)",
           }}>
-            HAVE AN ACCOUNT?{" "}
+            {t("register_login")}{" "}
             <span onClick={() => router.push("/login")} className="cursor-pointer"
               style={{ color: "rgba(0,212,255,0.6)" }}>
-              LOGIN →
+              →
             </span>
           </p>
         </div>

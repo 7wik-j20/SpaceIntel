@@ -14,15 +14,22 @@
   --green: #00e676;
   --text: #e2f0ff;
   --muted: #4a6880;
+  --spaceintel-base-font-size: 16px;
+  --spaceintel-ui-scale: 1;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
+
+html {
+  font-size: var(--spaceintel-base-font-size);
+}
 
 body {
   background: var(--bg);
   color: var(--text);
   font-family: 'Syne', sans-serif;
   overflow-x: hidden;
+  zoom: var(--spaceintel-ui-scale);
 }
 
 /* Starfield */
