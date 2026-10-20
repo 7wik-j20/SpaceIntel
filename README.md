@@ -329,7 +329,3 @@ Frontend runs at `http://localhost:3000`.
   - Confirm Tesseract and Poppler are installed and on PATH.
 - WebSocket disconnects:
   - Ensure backend is up on port 8000 and firewall allows local ws traffic.
-
-## License
-
-No license file is currently included. Add a `LICENSE` file before public distribution.
